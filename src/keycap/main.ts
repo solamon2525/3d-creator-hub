@@ -1,4 +1,7 @@
 import * as THREE from 'three';
+import { FontLoader, type Font } from 'three/examples/jsm/loaders/FontLoader.js';
+import { TextGeometry } from 'three/examples/jsm/geometries/TextGeometry.js';
+import helvetikerBold from 'three/examples/fonts/helvetiker_bold.typeface.json';
 import {
   createStudioViewer,
   exportStl,
@@ -15,8 +18,10 @@ const state = {
   legendColor: '#0f172a',
   size: 18,
   height: 8,
-  legendDepth: 0.8,
 };
+
+const fontLoader = new FontLoader();
+const legendFont: Font = fontLoader.parse(helvetikerBold);
 
 function buildKeycap(): THREE.Group {
   const group = new THREE.Group();
@@ -41,15 +46,15 @@ function buildKeycap(): THREE.Group {
     shape.quadraticCurveTo(-half, half, -half, half - r);
     shape.lineTo(-half, -half + r);
     shape.quadraticCurveTo(-half, -half, -half + r, -half);
+    // Extrude along +Y so the top face sits at y = h (no buried legend).
     top = new THREE.ExtrudeGeometry(shape, {
       depth: h,
       bevelEnabled: true,
-      bevelThickness: 0.08,
-      bevelSize: 0.08,
-      bevelSegments: 3,
+      bevelThickness: 0.06,
+      bevelSize: 0.06,
+      bevelSegments: 2,
     });
     top.rotateX(-Math.PI / 2);
-    top.translate(0, h / 2, 0);
   }
 
   const bodyMat = new THREE.MeshStandardMaterial({
@@ -58,7 +63,14 @@ function buildKeycap(): THREE.Group {
     metalness: 0.05,
   });
   const body = new THREE.Mesh(top, bodyMat);
+  // Keep every shape's bottom near y = 0 and top near y = h.
+  if (state.shape !== 'rounded') {
+    body.position.y = h / 2;
+  }
   group.add(body);
+
+  const bodyTopY =
+    state.shape === 'rounded' ? h + 0.06 : h;
 
   // stem (MX-ish cross simplified)
   const stemMat = new THREE.MeshStandardMaterial({
@@ -75,31 +87,38 @@ function buildKeycap(): THREE.Group {
   crossB.position.y = 0.05;
   group.add(crossB);
 
-  // legend
-  const canvas = document.createElement('canvas');
-  canvas.width = 256;
-  canvas.height = 256;
-  const ctx = canvas.getContext('2d')!;
-  ctx.clearRect(0, 0, 256, 256);
-  ctx.fillStyle = state.legendColor;
-  ctx.font = 'bold 140px Segoe UI, Sarabun, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(state.label.slice(0, 3), 128, 140);
+  // Raised 3D legend — always visible and included in STL.
+  const text = (state.label || 'A').slice(0, 3);
+  const textSize = Math.min(0.55, (s * 0.55) / Math.max(text.length, 1));
+  const textDepth = Math.max(0.08, h * 0.12);
+  const textGeo = new TextGeometry(text, {
+    font: legendFont,
+    size: textSize,
+    depth: textDepth,
+    curveSegments: 8,
+    bevelEnabled: true,
+    bevelThickness: 0.02,
+    bevelSize: 0.015,
+    bevelSegments: 2,
+  });
+  textGeo.computeBoundingBox();
+  const bb = textGeo.boundingBox!;
+  const tw = bb.max.x - bb.min.x;
+  const th = bb.max.y - bb.min.y;
+  textGeo.translate(-bb.min.x - tw / 2, -bb.min.y - th / 2, 0);
 
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
   const legend = new THREE.Mesh(
-    new THREE.PlaneGeometry(s * 0.7, s * 0.7),
+    textGeo,
     new THREE.MeshStandardMaterial({
-      map: tex,
-      transparent: true,
-      roughness: 0.6,
-      metalness: 0,
+      color: hexToColor(state.legendColor),
+      roughness: 0.4,
+      metalness: 0.05,
+      emissive: hexToColor(state.legendColor),
+      emissiveIntensity: 0.15,
     }),
   );
   legend.rotation.x = -Math.PI / 2;
-  legend.position.y = h / 2 + 0.02 + state.legendDepth / 20;
+  legend.position.y = bodyTopY + 0.01;
   group.add(legend);
 
   group.position.y = 0.3;
