@@ -18,6 +18,10 @@ const state = {
   legendColor: '#0f172a',
   size: 18,
   height: 8,
+  /** Letter height on the key top, in mm. */
+  letterSize: 8,
+  /** How much the letter sticks up, in mm. */
+  letterDepth: 1.2,
 };
 
 const fontLoader = new FontLoader();
@@ -87,10 +91,11 @@ function buildKeycap(): THREE.Group {
   crossB.position.y = 0.05;
   group.add(crossB);
 
-  // Raised 3D legend — always visible and included in STL.
+  // Raised 3D legend — size controlled separately from the keycap base.
   const text = (state.label || 'A').slice(0, 3);
-  const textSize = Math.min(0.55, (s * 0.55) / Math.max(text.length, 1));
-  const textDepth = Math.max(0.08, h * 0.12);
+  const maxLetter = s * 0.85;
+  const textSize = Math.min(maxLetter, Math.max(0.2, state.letterSize / 10));
+  const textDepth = Math.max(0.05, state.letterDepth / 10);
   const textGeo = new TextGeometry(text, {
     font: legendFont,
     size: textSize,
@@ -157,12 +162,20 @@ mountShell({
           </div>
         </div>
         <div class="field">
-          <label for="size">ความกว้าง (~mm): <span id="sizeVal">${state.size}</span></label>
+          <label for="size">ขนาดพื้นคีย์ (~mm): <span id="sizeVal">${state.size}</span></label>
           <input id="size" type="range" min="14" max="24" step="0.5" value="${state.size}" />
         </div>
         <div class="field">
-          <label for="height">ความสูง (~mm): <span id="heightVal">${state.height}</span></label>
+          <label for="height">ความสูงคีย์ (~mm): <span id="heightVal">${state.height}</span></label>
           <input id="height" type="range" min="5" max="12" step="0.5" value="${state.height}" />
+        </div>
+        <div class="field">
+          <label for="letterSize">ขนาดตัวอักษร (~mm): <span id="letterSizeVal">${state.letterSize}</span></label>
+          <input id="letterSize" type="range" min="3" max="16" step="0.5" value="${state.letterSize}" />
+        </div>
+        <div class="field">
+          <label for="letterDepth">ความนูนตัวอักษร (~mm): <span id="letterDepthVal">${state.letterDepth}</span></label>
+          <input id="letterDepth" type="range" min="0.4" max="3" step="0.1" value="${state.letterDepth}" />
         </div>
 
         <div class="actions">
@@ -197,8 +210,12 @@ const bodyColorEl = document.querySelector<HTMLInputElement>('#bodyColor')!;
 const legendColorEl = document.querySelector<HTMLInputElement>('#legendColor')!;
 const sizeEl = document.querySelector<HTMLInputElement>('#size')!;
 const heightEl = document.querySelector<HTMLInputElement>('#height')!;
+const letterSizeEl = document.querySelector<HTMLInputElement>('#letterSize')!;
+const letterDepthEl = document.querySelector<HTMLInputElement>('#letterDepth')!;
 const sizeVal = document.querySelector('#sizeVal')!;
 const heightVal = document.querySelector('#heightVal')!;
+const letterSizeVal = document.querySelector('#letterSizeVal')!;
+const letterDepthVal = document.querySelector('#letterDepthVal')!;
 
 labelEl.addEventListener('input', () => {
   state.label = labelEl.value || 'A';
@@ -224,6 +241,16 @@ sizeEl.addEventListener('input', () => {
 heightEl.addEventListener('input', () => {
   state.height = Number(heightEl.value);
   heightVal.textContent = String(state.height);
+  rebuild();
+});
+letterSizeEl.addEventListener('input', () => {
+  state.letterSize = Number(letterSizeEl.value);
+  letterSizeVal.textContent = String(state.letterSize);
+  rebuild();
+});
+letterDepthEl.addEventListener('input', () => {
+  state.letterDepth = Number(letterDepthEl.value);
+  letterDepthVal.textContent = String(state.letterDepth);
   rebuild();
 });
 
