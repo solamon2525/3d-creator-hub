@@ -3,9 +3,11 @@ import {
   captureCoverPng,
   createStudioViewer,
   debounce,
+  downloadProjectFile,
   loadProject,
   meshArraysToThree,
   mountShell,
+  readProjectFile,
   saveProject,
   setStatus,
   writeHashParams,
@@ -21,8 +23,12 @@ import {
 } from '../shared/geometry/manifoldOps';
 import { MX, mxSocketRects } from '../shared/geometry/mxStem';
 import { exportParts, type ExportPart } from '../shared/export/parts';
-import { hexToRgb, filamentOptionsHtml } from '../shared/units';
-import { imageFileToRegions, svgTextToRegions, type ColorRegion } from '../shared/geometry/imageToRegions';
+import { hexToRgb, filamentOptionsHtml, rgbToHex } from '../shared/units';
+import {
+  processImageWizard,
+  svgTextToRegions,
+  type ColorRegion,
+} from '../shared/geometry/imageToRegions';
 import { IMAGE_WIZARD_HINT, PRINT_TIPS_CLICKER } from '../shared/ui/presets';
 
 type BaseShape = 'circle' | 'square' | 'hexagon' | 'heart' | 'star';
@@ -45,6 +51,8 @@ type State = {
   keychain: boolean;
   keychainStyle: 'loop' | 'hole';
   maxColors: number;
+  cropMargin: number;
+  knockOutWhite: boolean;
   exploded: boolean;
 };
 
@@ -64,12 +72,17 @@ const state: State = {
   keychain: true,
   keychainStyle: 'loop',
   maxColors: 4,
+  cropMargin: 0.05,
+  knockOutWhite: true,
   exploded: false,
 };
 Object.assign(state, loadProject<Partial<State>>('clicker') ?? {});
 
 let imageRegions: ColorRegion[] | null = null;
 let lastParts: ExportPart[] = [];
+let lastImageFile: File | null = null;
+let palettePreview: string[] = [];
+let wizardPreviewUrl: string | null = null;
 
 function shapeOutline(kind: BaseShape, size: number): Ring {
   const r = size / 2;
@@ -304,13 +317,16 @@ mountShell({
         <div class="field"><label for="letterSize">ขนาดลาย (mm): <span id="letterSizeVal">${state.letterSize}</span></label><input id="letterSize" type="range" min="4" max="18" step="0.5" value="${state.letterSize}"/></div>
         <div class="field"><label for="letterDepth">ความนูน (mm): <span id="letterDepthVal">${state.letterDepth}</span></label><input id="letterDepth" type="range" min="0.4" max="2.5" step="0.1" value="${state.letterDepth}"/></div>
         <div class="field"><label for="maxColors">จำนวนสีรูป: <span id="maxColorsVal">${state.maxColors}</span></label><input id="maxColors" type="range" min="2" max="6" step="1" value="${state.maxColors}"/></div>
+        <div class="field hidden" id="cropField"><label for="cropMargin">Crop ขอบ: <span id="cropVal">${Math.round(state.cropMargin * 100)}</span>%</label><input id="cropMargin" type="range" min="0" max="30" step="1" value="${Math.round(state.cropMargin * 100)}"/></div>
+        <div class="field hidden" id="knockField"><label><input id="knockOutWhite" type="checkbox" ${state.knockOutWhite ? 'checked' : ''}/> ลบพื้นขาว (knock-out)</label></div>
         <div class="field"><label><input id="keychain" type="checkbox" ${state.keychain ? 'checked' : ''}/> พวงกุญแจ</label></div>
         <div class="field"><label for="keychainStyle">แบบห่วง</label><select id="keychainStyle"><option value="loop">Loop</option><option value="hole">Hole</option></select></div>
         <div class="field"><label><input id="exploded" type="checkbox"/> Exploded</label></div>
         <div class="actions">
           <button class="btn primary" id="export3mf">3MF + Cover</button>
           <button class="btn" id="exportStl">STL + Cover</button>
-          <button class="btn" id="saveProj">บันทึก</button>
+          <button class="btn" id="saveProj">บันทึก JSON</button>
+          <label class="btn" style="display:inline-block;cursor:pointer">โหลด JSON<input id="loadProj" type="file" accept="application/json,.json" hidden/></label>
         </div>
         <div class="hint">ฝา nest ใน bezel · MX socket จริง · ลายเป็น mesh พิมพ์ได้</div>
         ${IMAGE_WIZARD_HINT}
@@ -347,8 +363,41 @@ function syncMode() {
   q('nameField').classList.toggle('hidden', !texty);
   q('fontField').classList.toggle('hidden', !texty);
   q('fileField').classList.toggle('hidden', !filey);
+  q('cropField').classList.toggle('hidden', !filey);
+  q('knockField').classList.toggle('hidden', !filey);
   const wiz = document.querySelector('#imageWizard');
   wiz?.classList.toggle('hidden', !filey);
+}
+
+function renderPaletteSwatches() {
+  const host = document.querySelector('#paletteSwatches');
+  const img = document.querySelector<HTMLImageElement>('#wizardPreview');
+  if (!host) return;
+  host.innerHTML = palettePreview
+    .map((hex) => `<button type="button" class="swatch" style="background:${hex}" title="${hex}"></button>`)
+    .join('');
+  if (img) {
+    if (wizardPreviewUrl) {
+      img.src = wizardPreviewUrl;
+      img.classList.remove('hidden');
+    } else {
+      img.classList.add('hidden');
+    }
+  }
+}
+
+async function runImageWizard(file: File) {
+  lastImageFile = file;
+  const result = await processImageWizard(file, state.letterSize * 1.8, {
+    maxColors: state.maxColors,
+    cropMargin: state.cropMargin,
+    knockOutWhite: state.knockOutWhite,
+    maxSide: 180,
+  });
+  imageRegions = result.regions;
+  palettePreview = result.palette.map((rgb) => rgbToHex(rgb));
+  wizardPreviewUrl = result.previewUrl;
+  renderPaletteSwatches();
 }
 
 q<HTMLSelectElement>('importMode').onchange = (e) => {
@@ -390,7 +439,6 @@ for (const [id, key, val] of [
   ['thick', 'thick', 'thickVal'],
   ['letterSize', 'letterSize', 'letterSizeVal'],
   ['letterDepth', 'letterDepth', 'letterDepthVal'],
-  ['maxColors', 'maxColors', 'maxColorsVal'],
 ] as const) {
   q<HTMLInputElement>(id).oninput = (e) => {
     const num = Number((e.target as HTMLInputElement).value);
@@ -417,13 +465,32 @@ q<HTMLInputElement>('file').onchange = async (e) => {
   if (file.name.toLowerCase().endsWith('.svg') || file.type.includes('svg')) {
     imageRegions = await svgTextToRegions(await file.text(), state.letterSize * 1.6, state.maxColors);
     state.importMode = 'svg';
+    lastImageFile = null;
+    palettePreview = imageRegions.map((r) => rgbToHex(r.rgb));
+    wizardPreviewUrl = null;
+    renderPaletteSwatches();
   } else {
-    imageRegions = await imageFileToRegions(file, state.letterSize * 1.8, state.maxColors);
     state.importMode = 'image';
+    await runImageWizard(file);
   }
   q<HTMLSelectElement>('importMode').value = state.importMode;
   syncMode();
   rebuildDebounced();
+};
+q<HTMLInputElement>('cropMargin').oninput = (e) => {
+  state.cropMargin = Number((e.target as HTMLInputElement).value) / 100;
+  document.querySelector('#cropVal')!.textContent = String(Math.round(state.cropMargin * 100));
+  if (lastImageFile) void runImageWizard(lastImageFile).then(() => rebuildDebounced());
+};
+q<HTMLInputElement>('knockOutWhite').onchange = (e) => {
+  state.knockOutWhite = (e.target as HTMLInputElement).checked;
+  if (lastImageFile) void runImageWizard(lastImageFile).then(() => rebuildDebounced());
+};
+q<HTMLInputElement>('maxColors').oninput = (e) => {
+  state.maxColors = Number((e.target as HTMLInputElement).value);
+  document.querySelector('#maxColorsVal')!.textContent = String(state.maxColors);
+  if (lastImageFile) void runImageWizard(lastImageFile).then(() => rebuildDebounced());
+  else rebuildDebounced();
 };
 q<HTMLButtonElement>('export3mf').onclick = () => {
   const base = `clicker-${state.name}`;
@@ -436,8 +503,21 @@ q<HTMLButtonElement>('exportStl').onclick = () => {
   captureCoverPng(viewer, base);
 };
 q<HTMLButtonElement>('saveProj').onclick = () => {
-  saveProject('clicker', state);
-  setStatus(statusEl, 'บันทึกแล้ว', 'ok');
+  downloadProjectFile('clicker', state);
+  setStatus(statusEl, 'บันทึก JSON แล้ว', 'ok');
+};
+q<HTMLInputElement>('loadProj').onchange = async (e) => {
+  const file = (e.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+  try {
+    const proj = await readProjectFile(file);
+    if (proj.studio !== 'clicker') throw new Error(`ไฟล์นี้เป็น studio "${proj.studio}"`);
+    Object.assign(state, proj.data as Partial<State>);
+    saveProject('clicker', state);
+    location.reload();
+  } catch (err) {
+    setStatus(statusEl, err instanceof Error ? err.message : String(err), 'err');
+  }
 };
 syncMode();
 void warmFonts().then(() => rebuild());

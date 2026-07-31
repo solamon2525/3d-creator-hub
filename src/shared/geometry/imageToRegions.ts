@@ -135,23 +135,103 @@ export function regionsFromIndexed(
 export async function imageFileToRegions(
   file: File,
   sizeMm: number,
-  maxColors = 4,
-  maxSide = 160,
+  maxColorsOrOpts: number | ImageProcessOpts = 4,
+  maxSideLegacy = 160,
 ): Promise<ColorRegion[]> {
+  const opts: ImageProcessOpts =
+    typeof maxColorsOrOpts === 'number'
+      ? { maxColors: maxColorsOrOpts, maxSide: maxSideLegacy }
+      : maxColorsOrOpts;
+  const { imageData } = await rasterizeImageFile(file, opts);
+  const q = quantizeImageData(imageData, opts.maxColors ?? 4);
+  return regionsFromIndexed(q.indexed, q.palette, q.w, q.h, sizeMm);
+}
+
+export type ImageProcessOpts = {
+  maxColors?: number;
+  maxSide?: number;
+  /** Trim this fraction from each edge (0–0.35). */
+  cropMargin?: number;
+  /** Knock out near-white background to alpha. */
+  knockOutWhite?: boolean;
+  /** RGB channel must all be ≥ this to knock out (default 235). */
+  whiteThreshold?: number;
+};
+
+export type ImageProcessResult = {
+  regions: ColorRegion[];
+  palette: RGB[];
+  previewUrl: string;
+};
+
+async function rasterizeImageFile(
+  file: File,
+  opts: ImageProcessOpts,
+): Promise<{ imageData: ImageData; w: number; h: number; previewUrl: string }> {
   const bmp = await createImageBitmap(file);
-  const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
-  const w = Math.max(8, Math.round(bmp.width * scale));
-  const h = Math.max(8, Math.round(bmp.height * scale));
+  const maxSide = opts.maxSide ?? 160;
+  const crop = Math.min(0.35, Math.max(0, opts.cropMargin ?? 0));
+  const sx = bmp.width * crop;
+  const sy = bmp.height * crop;
+  const sw = bmp.width * (1 - crop * 2);
+  const sh = bmp.height * (1 - crop * 2);
+  const scale = Math.min(1, maxSide / Math.max(sw, sh));
+  const w = Math.max(8, Math.round(sw * scale));
+  const h = Math.max(8, Math.round(sh * scale));
   const canvas = document.createElement('canvas');
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext('2d')!;
   ctx.clearRect(0, 0, w, h);
-  ctx.drawImage(bmp, 0, 0, w, h);
+  ctx.drawImage(bmp, sx, sy, sw, sh, 0, 0, w, h);
   bmp.close();
-  const data = ctx.getImageData(0, 0, w, h);
-  const q = quantizeImageData(data, maxColors);
-  return regionsFromIndexed(q.indexed, q.palette, q.w, q.h, sizeMm);
+  const imageData = ctx.getImageData(0, 0, w, h);
+  if (opts.knockOutWhite) {
+    const thr = opts.whiteThreshold ?? 235;
+    const px = imageData.data;
+    for (let i = 0; i < px.length; i += 4) {
+      if (px[i]! >= thr && px[i + 1]! >= thr && px[i + 2]! >= thr) {
+        px[i + 3] = 0;
+      }
+    }
+    ctx.putImageData(imageData, 0, 0);
+  }
+  return { imageData, w, h, previewUrl: canvas.toDataURL('image/png') };
+}
+
+/** Full wizard path: preprocess → quantize → regions + palette preview. */
+export async function processImageWizard(
+  file: File,
+  sizeMm: number,
+  opts: ImageProcessOpts = {},
+): Promise<ImageProcessResult> {
+  const { imageData, previewUrl } = await rasterizeImageFile(file, opts);
+  const q = quantizeImageData(imageData, opts.maxColors ?? 4);
+  // paint indexed preview
+  const canvas = document.createElement('canvas');
+  canvas.width = q.w;
+  canvas.height = q.h;
+  const ctx = canvas.getContext('2d')!;
+  const out = ctx.createImageData(q.w, q.h);
+  for (let i = 0; i < q.indexed.length; i++) {
+    const ci = q.indexed[i]!;
+    const o = i * 4;
+    if (ci === 255) {
+      out.data[o + 3] = 0;
+      continue;
+    }
+    const [r, g, b] = q.palette[ci]!;
+    out.data[o] = r;
+    out.data[o + 1] = g;
+    out.data[o + 2] = b;
+    out.data[o + 3] = 255;
+  }
+  ctx.putImageData(out, 0, 0);
+  return {
+    regions: regionsFromIndexed(q.indexed, q.palette, q.w, q.h, sizeMm),
+    palette: q.palette,
+    previewUrl: canvas.toDataURL('image/png') || previewUrl,
+  };
 }
 
 export async function svgTextToRegions(
@@ -161,5 +241,5 @@ export async function svgTextToRegions(
 ): Promise<ColorRegion[]> {
   const blob = new Blob([svgText], { type: 'image/svg+xml' });
   const file = new File([blob], 'logo.svg', { type: 'image/svg+xml' });
-  return imageFileToRegions(file, sizeMm, maxColors, 200);
+  return imageFileToRegions(file, sizeMm, { maxColors, maxSide: 200 });
 }

@@ -350,6 +350,24 @@ input[type="file"] {
   background: rgba(56, 189, 248, 0.06);
 }
 .wizard strong { color: var(--accent-2); }
+.wizard-preview {
+  display: block;
+  width: 100%;
+  max-height: 120px;
+  object-fit: contain;
+  margin-top: 0.5rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+.wizard-preview.hidden { display: none !important; }
+.swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  padding: 0;
+}
 .preset-row {
   display: flex;
   flex-wrap: wrap;

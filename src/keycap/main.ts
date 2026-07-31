@@ -1,30 +1,33 @@
 import * as THREE from 'three';
 import { contours } from 'd3-contour';
+import { MX, mxCrossRects, stabOffsetsX, stemOffsetsX } from '../shared/geometry/mxStem';
+import {
+  difference,
+  disposeManifold,
+  extrudeRings,
+  cylinder,
+  manifoldToMesh,
+  mxCrossSolid,
+  union,
+} from '../shared/geometry/manifoldOps';
 import {
   captureCoverPng,
   createStudioViewer,
   debounce,
+  downloadProjectFile,
   meshArraysToThree,
   mountShell,
   readHashParams,
+  readProjectFile,
   saveProject,
   loadProject,
   setStatus,
   writeHashParams,
 } from '../shared/studio';
-import { fontSelectHtml, loadFont, textToContours, warmFonts, type Ring } from '../shared/geometry/textToContours';
-import {
-  difference,
-  disposeManifold,
-  extrudeRings,
-  manifoldToMesh,
-  mxCrossSolid,
-  union,
-} from '../shared/geometry/manifoldOps';
-import { MX, mxCrossRects, stemOffsetsX } from '../shared/geometry/mxStem';
 import { exportParts, type ExportPart } from '../shared/export/parts';
 import { hexToRgb, filamentOptionsHtml } from '../shared/units';
 import { svgTextToRegions } from '../shared/geometry/imageToRegions';
+import { fontSelectHtml, loadFont, textToContours, warmFonts, type Ring } from '../shared/geometry/textToContours';
 import { PRINT_TIPS_KEYCAP } from '../shared/ui/presets';
 
 type Shape = 'rounded' | 'square' | 'circle';
@@ -47,6 +50,7 @@ type State = {
   iconName: string;
   exploded: boolean;
   shineThrough: boolean;
+  stabilizer: boolean;
 };
 
 const UNIT_WIDTH: Record<UnitSize, number> = {
@@ -72,6 +76,7 @@ const state: State = {
   iconName: 'star',
   exploded: false,
   shineThrough: false,
+  stabilizer: true,
 };
 
 Object.assign(state, loadProject<Partial<State>>('keycap') ?? {});
@@ -216,6 +221,20 @@ async function build(): Promise<{ group: THREE.Group; parts: ExportPart[]; warni
     warns.push(`${state.unit}u · ${offsets.length} stems @ ±${(MX.unitPitch / 2).toFixed(2)} mm`);
   }
 
+  const stabXs =
+    state.stabilizer && state.unit >= 2 ? stabOffsetsX(state.unit) : [];
+  for (const ox of stabXs) {
+    const hole = await cylinder(MX.stabHoleDepth + 0.4, MX.stabHoleDiameter / 2, undefined, 28, false);
+    const placed = hole.translate([ox, 0, 0]);
+    disposeManifold(hole);
+    const next = await difference(body, placed);
+    disposeManifold(body, placed);
+    body = next;
+  }
+  if (stabXs.length) {
+    warns.push(`stabilizer holes @ ±${MX.stabOffset2u} mm`);
+  }
+
   const bodyMesh = manifoldToMesh(body);
   disposeManifold(body);
 
@@ -280,11 +299,13 @@ mountShell({
         <div class="field"><label for="letterDepth">ความนูน (mm): <span id="letterDepthVal">${state.letterDepth}</span></label><input id="letterDepth" type="range" min="0.4" max="3" step="0.1" value="${state.letterDepth}"/></div>
         <div class="field"><label for="stemTolerance">Stem tol (mm): <span id="stemTolVal">${state.stemTolerance}</span></label><input id="stemTolerance" type="range" min="-0.05" max="0.2" step="0.01" value="${state.stemTolerance}"/></div>
         <div class="field"><label><input id="shineThrough" type="checkbox"/> Shine-through</label></div>
+        <div class="field"><label><input id="stabilizer" type="checkbox" ${state.stabilizer ? 'checked' : ''}/> Stabilizer holes (2u+)</label></div>
         <div class="field"><label><input id="exploded" type="checkbox"/> Exploded</label></div>
         <div class="actions">
           <button class="btn primary" id="export3mf">3MF + Cover</button>
           <button class="btn" id="exportStl">STL + Cover</button>
-          <button class="btn" id="saveProj">บันทึก</button>
+          <button class="btn" id="saveProj">บันทึก JSON</button>
+          <label class="btn" style="display:inline-block;cursor:pointer">โหลด JSON<input id="loadProj" type="file" accept="application/json,.json" hidden/></label>
         </div>
         <div class="hint">พิมพ์คว่ำหน้า · 1 unit = 1 mm · MX stem · OFL fonts</div>
         ${PRINT_TIPS_KEYCAP}
@@ -386,6 +407,10 @@ q<HTMLInputElement>('shineThrough').onchange = (e) => {
   state.shineThrough = (e.target as HTMLInputElement).checked;
   rebuildDebounced();
 };
+q<HTMLInputElement>('stabilizer').onchange = (e) => {
+  state.stabilizer = (e.target as HTMLInputElement).checked;
+  rebuildDebounced();
+};
 q<HTMLInputElement>('exploded').onchange = (e) => {
   state.exploded = (e.target as HTMLInputElement).checked;
   viewer.setExploded(state.exploded ? 8 : 0);
@@ -411,8 +436,21 @@ q<HTMLButtonElement>('exportStl').onclick = () => {
   captureCoverPng(viewer, base);
 };
 q<HTMLButtonElement>('saveProj').onclick = () => {
-  saveProject('keycap', state);
-  setStatus(statusEl, 'บันทึกแล้ว', 'ok');
+  downloadProjectFile('keycap', state);
+  setStatus(statusEl, 'บันทึก JSON แล้ว', 'ok');
+};
+q<HTMLInputElement>('loadProj').onchange = async (e) => {
+  const file = (e.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+  try {
+    const proj = await readProjectFile(file);
+    if (proj.studio !== 'keycap') throw new Error(`ไฟล์นี้เป็น studio "${proj.studio}"`);
+    Object.assign(state, proj.data as Partial<State>);
+    saveProject('keycap', state);
+    location.reload();
+  } catch (err) {
+    setStatus(statusEl, err instanceof Error ? err.message : String(err), 'err');
+  }
 };
 syncMode();
 void warmFonts().then(() => rebuild());

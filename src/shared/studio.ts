@@ -233,6 +233,37 @@ export function loadProject<T>(key: string): T | null {
   }
 }
 
+export type ProjectFileV1 = {
+  version: 1;
+  studio: string;
+  savedAt: string;
+  data: unknown;
+};
+
+export function downloadProjectFile(studio: string, data: unknown) {
+  const payload: ProjectFileV1 = {
+    version: 1,
+    studio,
+    savedAt: new Date().toISOString(),
+    data,
+  };
+  downloadBlob(
+    new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }),
+    `3dch-${studio}.json`,
+  );
+  saveProject(studio, data);
+}
+
+export async function readProjectFile(file: File): Promise<ProjectFileV1> {
+  const text = await file.text();
+  const parsed = JSON.parse(text) as ProjectFileV1;
+  if (parsed?.version !== 1 || typeof parsed.studio !== 'string' || parsed.data == null) {
+    throw new Error('ไฟล์โปรเจกต์ไม่ถูกต้อง (ต้องการ version:1)');
+  }
+  return parsed;
+}
+
+
 export function writeHashParams(params: Record<string, string | number | boolean>) {
   const sp = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) sp.set(k, String(v));

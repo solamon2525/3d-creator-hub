@@ -3,10 +3,12 @@ import {
   captureCoverPng,
   createStudioViewer,
   debounce,
+  downloadProjectFile,
   exportGlb,
   loadProject,
   meshArraysToThree,
   mountShell,
+  readProjectFile,
   saveProject,
   setStatus,
 } from '../shared/studio';
@@ -17,8 +19,12 @@ import {
   union,
 } from '../shared/geometry/manifoldOps';
 import { exportParts, type ExportPart } from '../shared/export/parts';
-import { hexToRgb } from '../shared/units';
-import { imageFileToRegions, svgTextToRegions, type ColorRegion } from '../shared/geometry/imageToRegions';
+import { hexToRgb, rgbToHex } from '../shared/units';
+import {
+  processImageWizard,
+  svgTextToRegions,
+  type ColorRegion,
+} from '../shared/geometry/imageToRegions';
 import type { Ring } from '../shared/geometry/textToContours';
 import { PRINT_TIPS_MASCOT } from '../shared/ui/presets';
 import { assembleMascotFromGlb, MASCOT_PARTS } from '../shared/mascot/parts';
@@ -90,6 +96,8 @@ type State = {
   acc: Acc;
   blush: boolean;
   useGlb: boolean;
+  cropMargin: number;
+  knockOutWhite: boolean;
 };
 
 const state: State = {
@@ -109,12 +117,46 @@ const state: State = {
   acc: 'badge',
   blush: true,
   useGlb: true,
+  cropMargin: 0.05,
+  knockOutWhite: true,
 };
 Object.assign(state, loadProject<Partial<State>>('mascot') ?? {});
 
 let regions: ColorRegion[] | null = null;
 let lastParts: ExportPart[] = [];
 let avatarRoot: THREE.Group | null = null;
+let lastImageFile: File | null = null;
+
+function renderPalette(palette: [number, number, number][], previewUrl: string | null) {
+  const host = document.querySelector('#paletteSwatches');
+  const img = document.querySelector<HTMLImageElement>('#wizardPreview');
+  if (host) {
+    host.innerHTML = palette
+      .map((rgb) => {
+        const hex = rgbToHex(rgb);
+        return `<button type="button" class="swatch" style="background:${hex}" title="${hex}"></button>`;
+      })
+      .join('');
+  }
+  if (img) {
+    if (previewUrl) {
+      img.src = previewUrl;
+      img.classList.remove('hidden');
+    } else img.classList.add('hidden');
+  }
+}
+
+async function runReliefWizard(file: File) {
+  lastImageFile = file;
+  const result = await processImageWizard(file, state.size * 0.85, {
+    maxColors: state.maxColors,
+    cropMargin: state.cropMargin,
+    knockOutWhite: state.knockOutWhite,
+    maxSide: 200,
+  });
+  regions = result.regions;
+  renderPalette(result.palette, result.previewUrl);
+}
 
 function baseOutline(size: number): Ring {
   const r = size / 2;
@@ -327,6 +369,10 @@ mountShell({
         </div>
         <div id="reliefPanel">
           <div class="field"><label for="file">รูป / SVG การ์ตูน</label><input id="file" type="file" accept="image/*,.svg"/></div>
+          <div class="field"><label for="cropMargin">Crop ขอบ: <span id="cropVal">${Math.round(state.cropMargin * 100)}</span>%</label><input id="cropMargin" type="range" min="0" max="30" step="1" value="${Math.round(state.cropMargin * 100)}"/></div>
+          <div class="field"><label><input id="knockOutWhite" type="checkbox" ${state.knockOutWhite ? 'checked' : ''}/> ลบพื้นขาว</label></div>
+          <div id="paletteSwatches" class="preset-row"></div>
+          <img id="wizardPreview" alt="" class="wizard-preview hidden"/>
           <div class="field"><label for="size">ขนาดฐาน (mm): <span id="sizeVal">${state.size}</span></label><input id="size" type="range" min="28" max="60" step="1" value="${state.size}"/></div>
           <div class="field"><label for="reliefDepth">ความนูน (mm): <span id="reliefDepthVal">${state.reliefDepth}</span></label><input id="reliefDepth" type="range" min="0.6" max="3" step="0.1" value="${state.reliefDepth}"/></div>
           <div class="field"><label for="maxColors">จำนวนสี: <span id="maxColorsVal">${state.maxColors}</span></label><input id="maxColors" type="range" min="2" max="8" step="1" value="${state.maxColors}"/></div>
@@ -364,7 +410,10 @@ mountShell({
             <button class="btn" id="exportAvatarStl">STL + Cover</button>
           </div>
         </div>
-        <div class="actions" style="margin-top:0.5rem"><button class="btn" id="saveProj">บันทึก</button></div>
+        <div class="actions" style="margin-top:0.5rem">
+          <button class="btn" id="saveProj">บันทึก JSON</button>
+          <label class="btn" style="display:inline-block;cursor:pointer">โหลด JSON<input id="loadProj" type="file" accept="application/json,.json" hidden/></label>
+        </div>
         ${PRINT_TIPS_MASCOT}
         <div class="status" id="status">โหลด…</div>
       </aside>
@@ -438,10 +487,24 @@ q<HTMLInputElement>('file').onchange = async (e) => {
   if (!file) return;
   if (file.name.toLowerCase().endsWith('.svg') || file.type.includes('svg')) {
     regions = await svgTextToRegions(await file.text(), state.size * 0.85, state.maxColors);
+    lastImageFile = null;
+    renderPalette(
+      regions.map((r) => r.rgb),
+      null,
+    );
   } else {
-    regions = await imageFileToRegions(file, state.size * 0.85, state.maxColors);
+    await runReliefWizard(file);
   }
   setTab('relief');
+};
+q<HTMLInputElement>('cropMargin').oninput = (e) => {
+  state.cropMargin = Number((e.target as HTMLInputElement).value) / 100;
+  document.querySelector('#cropVal')!.textContent = String(Math.round(state.cropMargin * 100));
+  if (lastImageFile) void runReliefWizard(lastImageFile).then(() => rebuildDebounced());
+};
+q<HTMLInputElement>('knockOutWhite').onchange = (e) => {
+  state.knockOutWhite = (e.target as HTMLInputElement).checked;
+  if (lastImageFile) void runReliefWizard(lastImageFile).then(() => rebuildDebounced());
 };
 for (const [id, key, val] of [
   ['size', 'size', 'sizeVal'],
@@ -452,7 +515,11 @@ for (const [id, key, val] of [
     const num = Number((e.target as HTMLInputElement).value);
     (state as unknown as Record<string, number>)[key] = num;
     document.querySelector(`#${val}`)!.textContent = String(num);
-    rebuildDebounced();
+    if (key === 'maxColors' && lastImageFile) {
+      void runReliefWizard(lastImageFile).then(() => rebuildDebounced());
+    } else if (key === 'size' && lastImageFile) {
+      void runReliefWizard(lastImageFile).then(() => rebuildDebounced());
+    } else rebuildDebounced();
   };
 }
 q<HTMLInputElement>('baseColor').oninput = (e) => {
@@ -525,8 +592,21 @@ q<HTMLButtonElement>('exportAvatarStl').onclick = () => {
   });
 };
 q<HTMLButtonElement>('saveProj').onclick = () => {
-  saveProject('mascot', state);
-  setStatus(statusEl, 'บันทึกแล้ว', 'ok');
+  downloadProjectFile('mascot', state);
+  setStatus(statusEl, 'บันทึก JSON แล้ว', 'ok');
+};
+q<HTMLInputElement>('loadProj').onchange = async (e) => {
+  const file = (e.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+  try {
+    const proj = await readProjectFile(file);
+    if (proj.studio !== 'mascot') throw new Error(`ไฟล์นี้เป็น studio "${proj.studio}"`);
+    Object.assign(state, proj.data as Partial<State>);
+    saveProject('mascot', state);
+    location.reload();
+  } catch (err) {
+    setStatus(statusEl, err instanceof Error ? err.message : String(err), 'err');
+  }
 };
 
 void rebuild();

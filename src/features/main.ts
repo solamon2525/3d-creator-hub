@@ -16,7 +16,18 @@ mountShell({
           <a class="btn" href="${withBase('keycap/')}">Keycap</a>
           <a class="btn" href="${withBase('clicker/')}">Clicker</a>
           <a class="btn" href="${withBase('mascot/')}">Mascot</a>
+          <a class="btn" href="${withBase('roadmap.md')}" target="_blank" rel="noopener">ROADMAP.md</a>
         </p>
+      </section>
+
+      <section class="feat-block">
+        <h2>แผนพัฒนาระยะยาว</h2>
+        <ul class="feat-list">
+          <li><strong>เฟส N (ใกล้)</strong> — stabilizer 2u · image wizard · ไฟล์โปรเจกต์ JSON ✅ เริ่มแล้ว</li>
+          <li><strong>เฟส M (กลาง)</strong> — Blender pack · AMS ละเอียด · แชร์ลิงก์ · ชุดพิมพ์</li>
+          <li><strong>เฟส L (ยาว)</strong> — MakerWorld · แกลเลอรี · AI relief · ร้านค้า</li>
+        </ul>
+        <p class="feat-lead">รายละเอียดเต็ม: ไฟล์ <code>ROADMAP.md</code> ใน repo / ลิงก์ด้านบน</p>
       </section>
 
       <section class="feat-block">
@@ -24,11 +35,11 @@ mountShell({
         <ul class="feat-list">
           <li><strong>1 unit = 1 mm</strong> — ขนาดในพรีวิวตรงกับ slicer</li>
           <li><strong>manifold-3d</strong> — geometry กันน้ำ (watertight) สำหรับพิมพ์</li>
-          <li><strong>Export 3MF</strong> หลายชิ้น/หลายสี (AMS) · <strong>STL</strong> สำรอง (รวมสีเดียว)</li>
+          <li><strong>Export 3MF</strong> หลายชิ้น/หลายสี (AMS) · <strong>STL</strong> สำรอง (รวมสีเดียว) · cover PNG</li>
           <li><strong>ฟอนต์ OFL</strong> ไทย+ละติน: Sarabun, Kanit, Prompt (+ Oswald, Bebas)</li>
           <li>ตัวอักษรเป็น <strong>mesh นูนจริง</strong> ไม่ใช่แค่ texture บนหน้าจอ</li>
-          <li>Debounce rebuild · สถานะ/คำเตือน · บันทึกโปรเจกต์ในเบราว์เซอร์ · URL hash</li>
-          <li>พรีเซ็ตสีเส้นใย (Filament) ชื่อไทย/อังกฤษ · เคล็ดลับพิมพ์ในแผงควบคุม</li>
+          <li>บันทึก/โหลดโปรเจกต์เป็นไฟล์ <strong>JSON</strong> + localStorage · URL hash</li>
+          <li>พรีเซ็ตสีเส้นใย · เคล็ดลับพิมพ์ในแผงควบคุม</li>
         </ul>
       </section>
 
@@ -37,7 +48,7 @@ mountShell({
         <p class="feat-lead">สร้างคีย์แคปพิมพ์ได้ กดกับสวิตช์ Cherry MX ได้</p>
         <ul class="feat-list">
           <li>MX stem ขนาดมาตรฐาน + ปรับ stem tolerance</li>
-          <li>ขนาดคีย์ <strong>1u / 1.25u / 1.5u / 2u</strong> · 2u มี <strong>2 MX stems</strong> ระยะ pitch 19.05 mm</li>
+          <li>ขนาดคีย์ <strong>1u / 1.25u / 1.5u / 2u</strong> · 2u มี <strong>2 MX stems</strong> + <strong>stabilizer holes</strong> (±11.9 mm)</li>
           <li>รูปทรง: rounded · square · circle</li>
           <li>Legend: ข้อความไทย/อังกฤษ · ไอคอน · อัปโหลด SVG</li>
           <li>ปรับขนาดตัวอักษร / ความนูนแยกจากขนาดพื้น</li>
