@@ -179,6 +179,7 @@ export function createStudioViewer(container: HTMLElement): StudioViewer {
 export function meshArraysToThree(
   mesh: MeshArrays,
   color: THREE.ColorRepresentation,
+  opts: { raised?: boolean } = {},
 ): THREE.Mesh {
   const geo = new THREE.BufferGeometry();
   const { vertProperties: vp, triVerts: tv, numProp } = mesh;
@@ -192,14 +193,16 @@ export function meshArraysToThree(
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geo.setIndex(new THREE.BufferAttribute(tv, 1));
   geo.computeVertexNormals();
-  return new THREE.Mesh(
-    geo,
-    new THREE.MeshStandardMaterial({
-      color,
-      roughness: 0.45,
-      metalness: 0.05,
-    }),
-  );
+  const mat = new THREE.MeshStandardMaterial({
+    color,
+    roughness: opts.raised ? 0.35 : 0.45,
+    metalness: opts.raised ? 0.12 : 0.05,
+    emissive: opts.raised ? new THREE.Color(color).multiplyScalar(0.12) : 0x000000,
+    polygonOffset: !!opts.raised,
+    polygonOffsetFactor: opts.raised ? -2 : 0,
+    polygonOffsetUnits: opts.raised ? -2 : 0,
+  });
+  return new THREE.Mesh(geo, mat);
 }
 
 export function hexToColor(hex: string): THREE.Color {

@@ -12,7 +12,7 @@ import {
   setStatus,
   writeHashParams,
 } from '../shared/studio';
-import { fontSelectHtml, loadFont, textToContours, warmFonts, type Ring } from '../shared/geometry/textToContours';
+import { fontSelectHtml, loadFontForText, textToContours, warmFonts, type Ring } from '../shared/geometry/textToContours';
 import {
   difference,
   disposeManifold,
@@ -61,12 +61,12 @@ const state: State = {
   baseShape: 'circle',
   bodyColor: '#0f172a',
   capColor: '#f7f7f5',
-  textColor: '#f59e0b',
+  textColor: '#c2410c',
   size: 32,
   thick: 10,
   fontId: 'sarabun',
-  letterSize: 8,
-  letterDepth: 1.2,
+  letterSize: 10,
+  letterDepth: 1.6,
   importMode: 'text',
   colorMode: 'ams',
   keychain: true,
@@ -148,7 +148,6 @@ async function build() {
   const border = 2.2;
   const wellR = s / 2 - border;
   const capR = wellR - 0.35;
-  const travel = 3.8;
   const floor = 2.2;
 
   const bodyOuter = await extrudeRings([shapeOutline(state.baseShape, s)], bodyH, false);
@@ -220,6 +219,11 @@ async function build() {
   const bodyMesh = manifoldToMesh(body);
   disposeManifold(body);
 
+  const capThick = 3.2;
+  // Face sits slightly above body rim so Thai/Latin legend is easy to see
+  const capTop = bodyH + 0.7;
+  const capBottom = capTop - capThick;
+
   let cap = await extrudeRings(
     [
       Array.from({ length: 48 }, (_, i) => {
@@ -227,14 +231,14 @@ async function build() {
         return [Math.cos(a) * capR, Math.sin(a) * capR] as [number, number];
       }),
     ],
-    3.2,
+    capThick,
     false,
   );
   const stem = await mxCrossSolid(MX.stemCrossLength, MX.stemCrossThickness, 4.5);
   const stemPlaced = stem.translate([0, 0, -2]);
   const capJoined = await union(cap, stemPlaced);
   disposeManifold(cap, stem, stemPlaced);
-  const capLifted = capJoined.translate([0, 0, bodyH - travel + 0.4]);
+  const capLifted = capJoined.translate([0, 0, capBottom]);
   const capMesh = manifoldToMesh(capLifted);
   disposeManifold(capJoined, capLifted);
 
@@ -243,34 +247,48 @@ async function build() {
     { name: 'cap', mesh: capMesh, colorRgb: hexToRgb(state.capColor) },
   ];
 
+  const decorNames: string[] = [];
   try {
     let regions: ColorRegion[] = [];
     if (state.importMode === 'text') {
-      const font = await loadFont(state.fontId);
+      const { font, fontId, warned } = await loadFontForText(state.fontId, state.name || 'NAME');
+      if (warned) warns.push(warned);
+      if (fontId !== state.fontId) state.fontId = fontId;
       const contours = textToContours(font, state.name || 'NAME', state.letterSize);
+      if (!contours.rings.length) throw new Error('วาดตัวอักษรไม่ได้ — ลองฟอนต์ไทย (Sarabun/Kanit)');
       regions = [{ rgb: hexToRgb(state.textColor), rings: contours.rings, coverage: 1 }];
     } else if (state.importMode === 'icon') {
       regions = [{ rgb: hexToRgb(state.textColor), rings: iconRings(state.letterSize), coverage: 1 }];
     } else if (imageRegions?.length) {
       regions = imageRegions;
+    } else if (state.importMode === 'image' || state.importMode === 'svg') {
+      warns.push('ยังไม่มีรูป — อัปโหลดไฟล์ก่อน');
     }
     let zi = 0;
     for (const region of regions) {
       const bandDepth =
         state.colorMode === 'zband'
-          ? Math.max(0.35, state.letterDepth * 0.55)
-          : state.letterDepth;
+          ? Math.max(0.45, state.letterDepth * 0.55)
+          : Math.max(0.8, state.letterDepth);
+      // Lift above cap face so letters are not coplanar / sunk in the well
       const z0 =
-        bodyH - travel + 0.4 + 3.2 + (state.colorMode === 'zband' ? zi * bandDepth : zi * 0.01);
+        capTop +
+        0.25 +
+        (state.colorMode === 'zband' ? zi * bandDepth : zi * 0.02);
       const solid = await extrudeRings(region.rings, bandDepth, false);
       const placed = solid.translate([0, 0, z0]);
+      const name = state.colorMode === 'zband' ? `zband-${zi}` : `decor-${zi}`;
       parts.push({
-        name: state.colorMode === 'zband' ? `zband-${zi}` : `decor-${zi}`,
+        name,
         mesh: manifoldToMesh(placed),
         colorRgb: region.rgb,
       });
+      decorNames.push(name);
       disposeManifold(solid, placed);
       zi++;
+    }
+    if (!regions.length && state.importMode === 'text') {
+      warns.push('ไม่มี mesh ตัวอักษร');
     }
     if (state.colorMode === 'zband' && regions.length > 1) {
       warns.push('No-AMS: ชั้น Z แยกสี — ใส่ pause ใน slicer ตอนเปลี่ยนเส้น');
@@ -282,7 +300,12 @@ async function build() {
   const group = new THREE.Group();
   for (const p of parts) {
     const c = p.colorRgb;
-    const mesh = meshArraysToThree(p.mesh, new THREE.Color(c[0] / 255, c[1] / 255, c[2] / 255));
+    const raised = decorNames.includes(p.name);
+    const mesh = meshArraysToThree(
+      p.mesh,
+      new THREE.Color(c[0] / 255, c[1] / 255, c[2] / 255),
+      { raised },
+    );
     mesh.rotation.x = -Math.PI / 2;
     group.add(mesh);
   }
@@ -350,6 +373,7 @@ async function rebuild() {
     viewer.setExploded(state.exploded ? 12 : 0);
     viewer.fitToObject(2.0);
     writeHashParams({ name: state.name, size: state.size, mode: state.importMode });
+    q<HTMLSelectElement>('fontId').value = state.fontId;
     setStatus(statusEl, warnings.length ? warnings.join(' · ') : `พร้อม · ${parts.length} ส่วน`, warnings.length ? 'warn' : 'ok');
   } catch (e) {
     setStatus(statusEl, e instanceof Error ? e.message : String(e), 'err');

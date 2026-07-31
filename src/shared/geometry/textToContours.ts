@@ -208,3 +208,26 @@ export function fontSelectHtml(selected = 'sarabun'): string {
       `<option value="${f.id}" ${f.id === selected ? 'selected' : ''}>${f.labelTh} (${f.label})</option>`,
   ).join('');
 }
+
+const THAI_RE = /[\u0E00-\u0E7F]/;
+
+export function textNeedsThai(text: string): boolean {
+  return THAI_RE.test(text);
+}
+
+/** Load font, auto-fallback to Sarabun if text has Thai but font is Latin-only. */
+export async function loadFontForText(
+  id: string,
+  text: string,
+): Promise<{ font: Font; fontId: string; warned?: string }> {
+  const entry = FONT_CATALOG.find((f) => f.id === id) ?? FONT_CATALOG[0]!;
+  if (textNeedsThai(text) && !entry.scripts.includes('thai')) {
+    const font = await loadFont('sarabun');
+    return {
+      font,
+      fontId: 'sarabun',
+      warned: `ฟอนต์ ${entry.label} ไม่รองรับไทย — ใช้ Sarabun แทน`,
+    };
+  }
+  return { font: await loadFont(id), fontId: id };
+}
