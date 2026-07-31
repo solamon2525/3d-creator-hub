@@ -1,163 +1,211 @@
 import * as THREE from 'three';
 import {
   createStudioViewer,
-  exportStl,
-  hexToColor,
+  debounce,
+  exportGlb,
+  loadProject,
+  meshArraysToThree,
   mountShell,
+  saveProject,
+  setStatus,
 } from '../shared/studio';
+import {
+  disposeManifold,
+  extrudeRings,
+  manifoldToMesh,
+  union,
+} from '../shared/geometry/manifoldOps';
+import { exportParts, type ExportPart } from '../shared/export/parts';
+import { hexToRgb } from '../shared/units';
+import { imageFileToRegions, svgTextToRegions, type ColorRegion } from '../shared/geometry/imageToRegions';
+import type { Ring } from '../shared/geometry/textToContours';
+import { PRINT_TIPS_MASCOT } from '../shared/ui/presets';
+import { withBase } from '../shared/studio';
 
+type Tab = 'relief' | 'avatar';
 type Hair = 'short' | 'spiky' | 'bob' | 'none';
-type Eye = 'round' | 'happy' | 'dot';
+type Eyes = 'round' | 'happy' | 'dot';
 
-const state = {
+/** Slot API — swap primitives for GLB when files exist under public/mascot/. */
+export type MascotSlot = 'hair' | 'face' | 'body' | 'acc';
+export type MascotPartDef = { id: string; label: string; glb?: string };
+
+export const MASCOT_LIBRARY: Record<
+  string,
+  { name: string; skin: string; hairColor: string; shirt: string; pants: string; hair: Hair; eyes: Eyes }
+> = {
+  kampai: {
+    name: 'คำไผ่',
+    skin: '#ffd7b5',
+    hairColor: '#1e293b',
+    shirt: '#f59e0b',
+    pants: '#0f172a',
+    hair: 'short',
+    eyes: 'round',
+  },
+  sky: {
+    name: 'Sky',
+    skin: '#ffe4c9',
+    hairColor: '#0ea5e9',
+    shirt: '#38bdf8',
+    pants: '#1e3a5f',
+    hair: 'spiky',
+    eyes: 'happy',
+  },
+  berry: {
+    name: 'Berry',
+    skin: '#ffd7b5',
+    hairColor: '#9d174d',
+    shirt: '#fb7185',
+    pants: '#4c0519',
+    hair: 'bob',
+    eyes: 'dot',
+  },
+};
+
+export function mascotPartUrl(slot: MascotSlot, id: string): string {
+  return withBase(`mascot/${slot}/${id}.glb`);
+}
+
+type State = {
+  tab: Tab;
+  name: string;
+  size: number;
+  reliefDepth: number;
+  maxColors: number;
+  baseColor: string;
+  keychain: boolean;
+  // avatar
+  skin: string;
+  hairColor: string;
+  shirt: string;
+  pants: string;
+  hair: Hair;
+  eyes: Eyes;
+  blush: boolean;
+};
+
+const state: State = {
+  tab: 'relief',
   name: 'Chibi',
+  size: 40,
+  reliefDepth: 1.4,
+  maxColors: 5,
+  baseColor: '#f7f7f5',
+  keychain: true,
   skin: '#ffd7b5',
   hairColor: '#1e293b',
   shirt: '#38bdf8',
   pants: '#0f172a',
-  hair: 'short' as Hair,
-  eyes: 'round' as Eye,
+  hair: 'short',
+  eyes: 'round',
   blush: true,
 };
+Object.assign(state, loadProject<Partial<State>>('mascot') ?? {});
 
-function mat(color: string | number, opts: Partial<THREE.MeshStandardMaterialParameters> = {}) {
-  return new THREE.MeshStandardMaterial({
-    color: typeof color === 'string' ? hexToColor(color) : color,
-    roughness: 0.55,
-    metalness: 0.05,
-    ...opts,
+let regions: ColorRegion[] | null = null;
+let lastParts: ExportPart[] = [];
+let avatarRoot: THREE.Group | null = null;
+
+function baseOutline(size: number): Ring {
+  const r = size / 2;
+  return Array.from({ length: 48 }, (_, i) => {
+    const a = (i / 48) * Math.PI * 2;
+    return [r * Math.cos(a), r * Math.sin(a)] as [number, number];
   });
 }
 
-function buildMascot(): THREE.Group {
+function mat(color: string, opts: Partial<THREE.MeshStandardMaterialParameters> = {}) {
+  return new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.05, ...opts });
+}
+
+function buildAvatar(): THREE.Group {
   const g = new THREE.Group();
-
-  // legs
   const legMat = mat(state.pants);
-  const legL = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.2, 0.7, 16), legMat);
-  legL.position.set(-0.22, 0.35, 0);
+  const legL = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 2, 7, 16), legMat);
+  legL.position.set(-2.2, 3.5, 0);
   const legR = legL.clone();
-  legR.position.x = 0.22;
+  legR.position.x = 2.2;
   g.add(legL, legR);
-
-  // feet
   const shoe = mat('#111827');
-  const footL = new THREE.Mesh(new THREE.SphereGeometry(0.22, 16, 12), shoe);
-  footL.scale.set(1, 0.55, 1.35);
-  footL.position.set(-0.22, 0.08, 0.08);
-  const footR = footL.clone();
-  footR.position.x = 0.22;
-  g.add(footL, footR);
-
-  // body
-  const body = new THREE.Mesh(
-    new THREE.SphereGeometry(0.55, 28, 20),
-    mat(state.shirt),
-  );
+  for (const x of [-2.2, 2.2]) {
+    const f = new THREE.Mesh(new THREE.SphereGeometry(2.2, 16, 12), shoe);
+    f.scale.set(1, 0.55, 1.35);
+    f.position.set(x, 0.8, 0.8);
+    g.add(f);
+  }
+  const body = new THREE.Mesh(new THREE.SphereGeometry(5.5, 28, 20), mat(state.shirt));
   body.scale.set(1, 1.15, 0.9);
-  body.position.y = 1.05;
+  body.position.y = 10.5;
   g.add(body);
-
-  // arms
   const armMat = mat(state.skin);
-  const armL = new THREE.Mesh(new THREE.CapsuleGeometry(0.12, 0.45, 6, 10), armMat);
-  armL.position.set(-0.7, 1.05, 0);
-  armL.rotation.z = 0.35;
-  const armR = armL.clone();
-  armR.position.x = 0.7;
-  armR.rotation.z = -0.35;
-  g.add(armL, armR);
-
-  // head
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.48, 32, 24), mat(state.skin));
-  head.position.y = 1.95;
+  for (const [x, rot] of [
+    [-7, 0.35],
+    [7, -0.35],
+  ] as const) {
+    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(1.2, 4.5, 6, 10), armMat);
+    arm.position.set(x, 10.5, 0);
+    arm.rotation.z = rot;
+    g.add(arm);
+  }
+  const head = new THREE.Mesh(new THREE.SphereGeometry(4.8, 32, 24), mat(state.skin));
+  head.position.y = 19.5;
   g.add(head);
-
-  // ears
-  const earL = new THREE.Mesh(new THREE.SphereGeometry(0.12, 12, 10), mat(state.skin));
-  earL.position.set(-0.45, 1.95, 0);
-  const earR = earL.clone();
-  earR.position.x = 0.45;
-  g.add(earL, earR);
-
-  // hair
-  if (state.hair !== 'none') {
-    const hairMat = mat(state.hairColor);
-    if (state.hair === 'short') {
-      const hair = new THREE.Mesh(new THREE.SphereGeometry(0.5, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.55), hairMat);
-      hair.position.set(0, 2.05, 0);
-      g.add(hair);
-    } else if (state.hair === 'bob') {
-      const hair = new THREE.Mesh(new THREE.SphereGeometry(0.55, 24, 16), hairMat);
-      hair.scale.set(1.05, 0.9, 1.05);
-      hair.position.set(0, 1.95, -0.02);
-      g.add(hair);
-      const bang = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.18, 0.2), hairMat);
-      bang.position.set(0, 2.15, 0.35);
-      bang.rotation.x = -0.25;
-      g.add(bang);
-    } else {
-      for (const [x, z, rot] of [
-        [0, 0.15, 0],
-        [-0.22, 0.05, 0.3],
-        [0.22, 0.05, -0.3],
-        [0, -0.05, 0.15],
-      ] as const) {
-        const spike = new THREE.Mesh(new THREE.ConeGeometry(0.14, 0.45, 8), hairMat);
-        spike.position.set(x, 2.35, z);
-        spike.rotation.z = rot;
-        g.add(spike);
-      }
-      const base = new THREE.Mesh(new THREE.SphereGeometry(0.48, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.5), hairMat);
-      base.position.set(0, 2.0, 0);
-      g.add(base);
+  for (const x of [-4.5, 4.5]) {
+    const ear = new THREE.Mesh(new THREE.SphereGeometry(1.2, 12, 10), mat(state.skin));
+    ear.position.set(x, 19.5, 0);
+    g.add(ear);
+  }
+  const hairMat = mat(state.hairColor);
+  if (state.hair === 'short') {
+    const hair = new THREE.Mesh(
+      new THREE.SphereGeometry(5, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.55),
+      hairMat,
+    );
+    hair.position.set(0, 20.5, 0);
+    g.add(hair);
+  } else if (state.hair === 'bob') {
+    const hair = new THREE.Mesh(new THREE.SphereGeometry(5.5, 24, 16), hairMat);
+    hair.scale.set(1.05, 0.9, 1.05);
+    hair.position.set(0, 19.5, -0.2);
+    g.add(hair);
+  } else if (state.hair === 'spiky') {
+    for (const [x, z] of [
+      [0, 1.5],
+      [-2.2, 0.5],
+      [2.2, 0.5],
+    ] as const) {
+      const spike = new THREE.Mesh(new THREE.ConeGeometry(1.4, 4.5, 8), hairMat);
+      spike.position.set(x, 23.5, z);
+      g.add(spike);
     }
   }
-
-  // eyes
   const eyeMat = mat('#0f172a');
-  const eyeY = 1.98;
-  if (state.eyes === 'dot') {
-    for (const x of [-0.16, 0.16]) {
-      const e = new THREE.Mesh(new THREE.SphereGeometry(0.07, 12, 10), eyeMat);
-      e.position.set(x, eyeY, 0.42);
-      g.add(e);
-    }
-  } else if (state.eyes === 'happy') {
-    for (const x of [-0.16, 0.16]) {
-      const e = new THREE.Mesh(new THREE.TorusGeometry(0.09, 0.025, 8, 16, Math.PI), eyeMat);
-      e.position.set(x, eyeY, 0.42);
+  for (const x of [-1.6, 1.6]) {
+    if (state.eyes === 'happy') {
+      const e = new THREE.Mesh(new THREE.TorusGeometry(0.9, 0.25, 8, 16, Math.PI), eyeMat);
+      e.position.set(x, 19.8, 4.2);
       e.rotation.x = Math.PI;
       g.add(e);
-    }
-  } else {
-    for (const x of [-0.16, 0.16]) {
-      const e = new THREE.Mesh(new THREE.SphereGeometry(0.09, 14, 12), eyeMat);
-      e.scale.set(1, 1.15, 0.7);
-      e.position.set(x, eyeY, 0.42);
+    } else {
+      const e = new THREE.Mesh(
+        new THREE.SphereGeometry(state.eyes === 'dot' ? 0.7 : 0.9, 14, 12),
+        eyeMat,
+      );
+      e.position.set(x, 19.8, 4.2);
       g.add(e);
-      const shine = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 8), mat('#ffffff'));
-      shine.position.set(x - 0.03, eyeY + 0.03, 0.48);
-      g.add(shine);
     }
   }
-
-  // blush
   if (state.blush) {
     const blushMat = mat('#fb7185', { transparent: true, opacity: 0.55 });
-    for (const x of [-0.28, 0.28]) {
-      const b = new THREE.Mesh(new THREE.CircleGeometry(0.07, 12), blushMat);
-      b.position.set(x, 1.86, 0.43);
+    for (const x of [-2.8, 2.8]) {
+      const b = new THREE.Mesh(new THREE.CircleGeometry(0.7, 12), blushMat);
+      b.position.set(x, 18.6, 4.3);
       g.add(b);
     }
   }
-
-  // mouth
-  const mouth = new THREE.Mesh(
-    new THREE.TorusGeometry(0.08, 0.018, 8, 16, Math.PI),
-    mat('#be123c'),
-  );
-  mouth.position.set(0, 1.78, 0.44);
+  const mouth = new THREE.Mesh(new THREE.TorusGeometry(0.8, 0.18, 8, 16, Math.PI), mat('#be123c'));
+  mouth.position.set(0, 17.8, 4.4);
   mouth.rotation.x = Math.PI;
   g.add(mouth);
 
@@ -166,23 +214,78 @@ function buildMascot(): THREE.Group {
   canvas.width = 256;
   canvas.height = 64;
   const ctx = canvas.getContext('2d')!;
-  ctx.fillStyle = 'rgba(15,23,42,0.85)';
+  ctx.fillStyle = 'rgba(15,23,42,0.9)';
   ctx.fillRect(0, 0, 256, 64);
   ctx.fillStyle = '#f8fafc';
-  ctx.font = 'bold 28px Segoe UI, Sarabun, sans-serif';
+  ctx.font = 'bold 28px Sarabun, Segoe UI, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(state.name.slice(0, 12), 128, 34);
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   const plate = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.4, 0.35),
+    new THREE.PlaneGeometry(14, 3.5),
     new THREE.MeshStandardMaterial({ map: tex, transparent: true }),
   );
-  plate.position.set(0, 0.05, 1.1);
+  plate.position.set(0, 0.5, 11);
   g.add(plate);
-
   return g;
+}
+
+async function buildRelief() {
+  const warns: string[] = [];
+  const s = state.size;
+  const baseH = 2.4;
+  let base = await extrudeRings([baseOutline(s)], baseH, false);
+  if (state.keychain) {
+    const lug = await extrudeRings(
+      [
+        Array.from({ length: 28 }, (_, i) => {
+          const a = (i / 28) * Math.PI * 2;
+          return [s / 2 + 2.5 + Math.cos(a) * 3.8, Math.sin(a) * 3.8] as [number, number];
+        }),
+      ],
+      baseH * 0.85,
+      false,
+    );
+    const hole = await extrudeRings(
+      [
+        Array.from({ length: 20 }, (_, i) => {
+          const a = (i / 20) * Math.PI * 2;
+          return [s / 2 + 2.5 + Math.cos(a) * 2.1, Math.sin(a) * 2.1] as [number, number];
+        }),
+      ],
+      baseH + 1,
+      false,
+    );
+    const loop = await (await import('../shared/geometry/manifoldOps')).difference(lug, hole);
+    base = await union(base, loop);
+    disposeManifold(lug, hole, loop);
+  }
+  const parts: ExportPart[] = [
+    { name: 'base', mesh: manifoldToMesh(base), colorRgb: hexToRgb(state.baseColor) },
+  ];
+  disposeManifold(base);
+
+  const regs = regions ?? [];
+  if (!regs.length) warns.push('อัปโหลดรูปหรือ SVG เพื่อสร้างนูน');
+  let i = 0;
+  for (const r of regs) {
+    const solid = await extrudeRings(r.rings, state.reliefDepth, false);
+    const placed = solid.translate([0, 0, baseH]);
+    parts.push({ name: `relief-${i}`, mesh: manifoldToMesh(placed), colorRgb: r.rgb });
+    disposeManifold(solid, placed);
+    i++;
+  }
+
+  const group = new THREE.Group();
+  for (const p of parts) {
+    const c = p.colorRgb;
+    const mesh = meshArraysToThree(p.mesh, new THREE.Color(c[0] / 255, c[1] / 255, c[2] / 255));
+    mesh.rotation.x = -Math.PI / 2;
+    group.add(mesh);
+  }
+  return { group, parts, warnings: warns };
 }
 
 mountShell({
@@ -192,110 +295,186 @@ mountShell({
     <div class="studio">
       <aside class="panel">
         <h1>Mascot Studio</h1>
-        <p class="desc">ตัวการ์ตูน chibi — ปรับทรงผม ตา สีเสื้อ แล้ว export STL</p>
-
-        <div class="field">
-          <label for="name">ชื่อตัวละคร</label>
-          <input id="name" type="text" maxlength="12" value="${state.name}" />
+        <p class="desc">แท็บ Relief พิมพ์ได้ · แท็บ Avatar แต่งตัวละคร</p>
+        <div class="tabs">
+          <button type="button" id="tabRelief" class="active">Relief พิมพ์</button>
+          <button type="button" id="tabAvatar">Avatar</button>
         </div>
-        <div class="field">
-          <label for="hair">ทรงผม</label>
-          <select id="hair">
-            <option value="short">Short</option>
-            <option value="spiky">Spiky</option>
-            <option value="bob">Bob</option>
-            <option value="none">Bald</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="eyes">ดวงตา</label>
-          <select id="eyes">
-            <option value="round">Round</option>
-            <option value="happy">Happy</option>
-            <option value="dot">Dot</option>
-          </select>
-        </div>
-        <div class="row">
-          <div class="field">
-            <label for="skin">สีผิว</label>
-            <input id="skin" type="color" value="${state.skin}" />
-          </div>
-          <div class="field">
-            <label for="hairColor">สีผม</label>
-            <input id="hairColor" type="color" value="${state.hairColor}" />
+        <div id="reliefPanel">
+          <div class="field"><label for="file">รูป / SVG การ์ตูน</label><input id="file" type="file" accept="image/*,.svg"/></div>
+          <div class="field"><label for="size">ขนาดฐาน (mm): <span id="sizeVal">${state.size}</span></label><input id="size" type="range" min="28" max="60" step="1" value="${state.size}"/></div>
+          <div class="field"><label for="reliefDepth">ความนูน (mm): <span id="reliefDepthVal">${state.reliefDepth}</span></label><input id="reliefDepth" type="range" min="0.6" max="3" step="0.1" value="${state.reliefDepth}"/></div>
+          <div class="field"><label for="maxColors">จำนวนสี: <span id="maxColorsVal">${state.maxColors}</span></label><input id="maxColors" type="range" min="2" max="8" step="1" value="${state.maxColors}"/></div>
+          <div class="field"><label for="baseColor">สีฐาน</label><input id="baseColor" type="color" value="${state.baseColor}"/></div>
+          <div class="field"><label><input id="keychain" type="checkbox" ${state.keychain ? 'checked' : ''}/> พวงกุญแจ</label></div>
+          <div class="actions">
+            <button class="btn primary" id="export3mf">3MF</button>
+            <button class="btn" id="exportStl">STL</button>
           </div>
         </div>
-        <div class="row">
-          <div class="field">
-            <label for="shirt">สีเสื้อ</label>
-            <input id="shirt" type="color" value="${state.shirt}" />
+        <div id="avatarPanel" class="hidden">
+          <div class="section-title">Library</div>
+          <div class="preset-row" id="libPresets">
+            <button type="button" data-lib="kampai">คำไผ่</button>
+            <button type="button" data-lib="sky">Sky</button>
+            <button type="button" data-lib="berry">Berry</button>
           </div>
-          <div class="field">
-            <label for="pants">สีกางเกง</label>
-            <input id="pants" type="color" value="${state.pants}" />
+          <div class="field"><label for="name">ชื่อ</label><input id="name" maxlength="12" value="${state.name}"/></div>
+          <div class="field"><label for="hair">ทรงผม</label><select id="hair"><option value="short">Short</option><option value="spiky">Spiky</option><option value="bob">Bob</option><option value="none">Bald</option></select></div>
+          <div class="field"><label for="eyes">ตา</label><select id="eyes"><option value="round">Round</option><option value="happy">Happy</option><option value="dot">Dot</option></select></div>
+          <div class="row">
+            <div class="field"><label for="skin">ผิว</label><input id="skin" type="color" value="${state.skin}"/></div>
+            <div class="field"><label for="hairColor">ผม</label><input id="hairColor" type="color" value="${state.hairColor}"/></div>
+          </div>
+          <div class="row">
+            <div class="field"><label for="shirt">เสื้อ</label><input id="shirt" type="color" value="${state.shirt}"/></div>
+            <div class="field"><label for="pants">กางเกง</label><input id="pants" type="color" value="${state.pants}"/></div>
+          </div>
+          <div class="field"><label><input id="blush" type="checkbox" ${state.blush ? 'checked' : ''}/> Blush</label></div>
+          <div class="hint">Slot API พร้อม — ใส่ GLB ใน public/mascot/&#123;hair,face,body,acc&#125;/ ภายหลังได้</div>
+          <div class="actions">
+            <button class="btn primary" id="exportGlb">GLB</button>
+            <button class="btn" id="exportAvatarStl">STL</button>
           </div>
         </div>
-        <div class="field">
-          <label>
-            <input id="blush" type="checkbox" ${state.blush ? 'checked' : ''} />
-            มี blush แก้ม
-          </label>
-        </div>
-
-        <div class="actions">
-          <button class="btn primary" id="export">ดาวน์โหลด STL</button>
-        </div>
-        <div class="hint">
-          รุ่นนี้ประกอบจาก primitives ใน Three.js
-          รุ่นถัดไปจะรองรับ GLB parts (หน้า/ผม/เสื้อ) จาก Blender
-        </div>
+        <div class="actions" style="margin-top:0.5rem"><button class="btn" id="saveProj">บันทึก</button></div>
+        ${PRINT_TIPS_MASCOT}
+        <div class="status" id="status">โหลด…</div>
       </aside>
-      <div class="stage-wrap">
-        <div id="stage" style="width:100%;height:100%"></div>
-        <div class="stage-label">ลากหมุน · สกอลล์ซูม</div>
-      </div>
-    </div>
-  `,
+      <div class="stage-wrap"><div id="stage" style="width:100%;height:100%"></div><div class="stage-label">Relief = mm · Avatar = display units</div></div>
+    </div>`,
 });
 
-const stage = document.querySelector<HTMLElement>('#stage')!;
-const viewer = createStudioViewer(stage);
-viewer.camera.position.set(3.2, 2.8, 4.5);
-viewer.controls.target.set(0, 1.2, 0);
-let model = buildMascot();
-viewer.setRoot(model);
+const viewer = createStudioViewer(document.querySelector('#stage')!);
+const statusEl = document.querySelector<HTMLElement>('#status')!;
+const q = <T extends HTMLElement>(id: string) => document.querySelector<T>(`#${id}`)!;
 
-function rebuild() {
-  model = buildMascot();
-  viewer.setRoot(model);
+function setTab(tab: Tab) {
+  state.tab = tab;
+  q('tabRelief').classList.toggle('active', tab === 'relief');
+  q('tabAvatar').classList.toggle('active', tab === 'avatar');
+  q('reliefPanel').classList.toggle('hidden', tab !== 'relief');
+  q('avatarPanel').classList.toggle('hidden', tab !== 'avatar');
+  void rebuild();
 }
 
-const bind = <T extends HTMLElement>(id: string) => document.querySelector<T>(`#${id}`)!;
+async function rebuild() {
+  setStatus(statusEl, 'กำลังสร้าง…', 'warn');
+  try {
+    if (state.tab === 'avatar') {
+      avatarRoot = buildAvatar();
+      lastParts = [];
+      viewer.setRoot(avatarRoot);
+      viewer.camera.position.set(35, 30, 45);
+      viewer.controls.target.set(0, 12, 0);
+      viewer.fitToObject(2.4);
+      setStatus(statusEl, 'Avatar พร้อม · export GLB/STL', 'ok');
+      return;
+    }
+    const { group, parts, warnings } = await buildRelief();
+    lastParts = parts;
+    avatarRoot = null;
+    viewer.setRoot(group);
+    viewer.fitToObject(2.0);
+    setStatus(statusEl, warnings.length ? warnings.join(' · ') : `Relief พร้อม · ${parts.length} ส่วน`, warnings.length ? 'warn' : 'ok');
+  } catch (e) {
+    setStatus(statusEl, e instanceof Error ? e.message : String(e), 'err');
+  }
+}
+const rebuildDebounced = debounce(() => void rebuild(), 200);
 
-bind<HTMLInputElement>('name').addEventListener('input', (e) => {
+q('tabRelief').onclick = () => setTab('relief');
+q('tabAvatar').onclick = () => setTab('avatar');
+document.querySelectorAll<HTMLButtonElement>('#libPresets button').forEach((btn) => {
+  btn.onclick = () => {
+    const id = btn.dataset.lib!;
+    const lib = MASCOT_LIBRARY[id];
+    if (!lib) return;
+    Object.assign(state, lib);
+    q<HTMLInputElement>('name').value = state.name;
+    q<HTMLSelectElement>('hair').value = state.hair;
+    q<HTMLSelectElement>('eyes').value = state.eyes;
+    for (const idc of ['skin', 'hairColor', 'shirt', 'pants'] as const) {
+      q<HTMLInputElement>(idc).value = state[idc];
+    }
+    setTab('avatar');
+  };
+});
+q<HTMLInputElement>('file').onchange = async (e) => {
+  const file = (e.target as HTMLInputElement).files?.[0];
+  if (!file) return;
+  if (file.name.toLowerCase().endsWith('.svg') || file.type.includes('svg')) {
+    regions = await svgTextToRegions(await file.text(), state.size * 0.85, state.maxColors);
+  } else {
+    regions = await imageFileToRegions(file, state.size * 0.85, state.maxColors);
+  }
+  setTab('relief');
+};
+for (const [id, key, val] of [
+  ['size', 'size', 'sizeVal'],
+  ['reliefDepth', 'reliefDepth', 'reliefDepthVal'],
+  ['maxColors', 'maxColors', 'maxColorsVal'],
+] as const) {
+  q<HTMLInputElement>(id).oninput = (e) => {
+    const num = Number((e.target as HTMLInputElement).value);
+    (state as unknown as Record<string, number>)[key] = num;
+    document.querySelector(`#${val}`)!.textContent = String(num);
+    rebuildDebounced();
+  };
+}
+q<HTMLInputElement>('baseColor').oninput = (e) => {
+  state.baseColor = (e.target as HTMLInputElement).value;
+  rebuildDebounced();
+};
+q<HTMLInputElement>('keychain').onchange = (e) => {
+  state.keychain = (e.target as HTMLInputElement).checked;
+  rebuildDebounced();
+};
+q<HTMLInputElement>('name').oninput = (e) => {
   state.name = (e.target as HTMLInputElement).value || 'Chibi';
-  rebuild();
-});
-bind<HTMLSelectElement>('hair').addEventListener('change', (e) => {
+  rebuildDebounced();
+};
+q<HTMLSelectElement>('hair').value = state.hair;
+q<HTMLSelectElement>('hair').onchange = (e) => {
   state.hair = (e.target as HTMLSelectElement).value as Hair;
-  rebuild();
-});
-bind<HTMLSelectElement>('eyes').addEventListener('change', (e) => {
-  state.eyes = (e.target as HTMLSelectElement).value as Eye;
-  rebuild();
-});
-for (const key of ['skin', 'hairColor', 'shirt', 'pants'] as const) {
-  bind<HTMLInputElement>(key).addEventListener('input', (e) => {
-    state[key] = (e.target as HTMLInputElement).value;
-    rebuild();
-  });
+  rebuildDebounced();
+};
+q<HTMLSelectElement>('eyes').value = state.eyes;
+q<HTMLSelectElement>('eyes').onchange = (e) => {
+  state.eyes = (e.target as HTMLSelectElement).value as Eyes;
+  rebuildDebounced();
+};
+for (const id of ['skin', 'hairColor', 'shirt', 'pants'] as const) {
+  q<HTMLInputElement>(id).oninput = (e) => {
+    state[id] = (e.target as HTMLInputElement).value;
+    rebuildDebounced();
+  };
 }
-bind<HTMLInputElement>('blush').addEventListener('change', (e) => {
+q<HTMLInputElement>('blush').onchange = (e) => {
   state.blush = (e.target as HTMLInputElement).checked;
-  rebuild();
-});
+  rebuildDebounced();
+};
+q<HTMLButtonElement>('export3mf').onclick = () => exportParts(lastParts, `mascot-relief-${state.name}`, '3mf');
+q<HTMLButtonElement>('exportStl').onclick = () => exportParts(lastParts, `mascot-relief-${state.name}`, 'stl');
+q<HTMLButtonElement>('exportGlb').onclick = () => {
+  if (avatarRoot) exportGlb(avatarRoot, `mascot-${state.name}.glb`);
+};
+q<HTMLButtonElement>('exportAvatarStl').onclick = () => {
+  if (!avatarRoot) return;
+  // Convert avatar meshes roughly via three STL path — use exportParts empty fallback
+  import('three/examples/jsm/exporters/STLExporter.js').then(({ STLExporter }) => {
+    const exp = new STLExporter();
+    const data = exp.parse(avatarRoot!, { binary: true }) as DataView;
+    const blob = new Blob([data.buffer as ArrayBuffer], { type: 'model/stl' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `mascot-${state.name}.stl`;
+    a.click();
+  });
+};
+q<HTMLButtonElement>('saveProj').onclick = () => {
+  saveProject('mascot', state);
+  setStatus(statusEl, 'บันทึกแล้ว', 'ok');
+};
 
-document.querySelector('#export')!.addEventListener('click', () => {
-  const safe = state.name.replace(/[^\wก-๙-]+/g, '-').slice(0, 20) || 'mascot';
-  exportStl(model, `mascot-${safe}.stl`);
-});
+void rebuild();

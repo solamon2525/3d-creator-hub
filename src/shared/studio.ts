@@ -1,6 +1,10 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { STLExporter } from 'three/examples/jsm/exporters/STLExporter.js';
+import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
+import type { MeshArrays } from './geometry/manifoldOps';
+import { downloadBlob } from './export/download';
+
+export { downloadBlob } from './export/download';
 
 export function withBase(path: string): string {
   const base = import.meta.env.BASE_URL || '/';
@@ -15,6 +19,7 @@ export function mountShell(options: {
 }): HTMLElement {
   const root = document.querySelector<HTMLElement>('#app');
   if (!root) throw new Error('#app missing');
+  document.title = `${options.title} — 3D Creator Hub`;
 
   const links = [
     { id: 'hub', href: withBase(''), label: 'Hub' },
@@ -43,6 +48,22 @@ export function mountShell(options: {
   return root;
 }
 
+export function disposeObject3D(object: THREE.Object3D) {
+  object.traverse((obj) => {
+    const mesh = obj as THREE.Mesh;
+    if (mesh.isMesh) {
+      mesh.geometry?.dispose();
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const m of mats) {
+        if (!m) continue;
+        const std = m as THREE.MeshStandardMaterial;
+        std.map?.dispose();
+        m.dispose();
+      }
+    }
+  });
+}
+
 export interface StudioViewer {
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
@@ -50,6 +71,8 @@ export interface StudioViewer {
   controls: OrbitControls;
   root: THREE.Group;
   setRoot(object: THREE.Object3D): void;
+  setExploded(gapMm: number): void;
+  fitToObject(padding?: number): void;
   dispose(): void;
 }
 
@@ -57,8 +80,9 @@ export function createStudioViewer(container: HTMLElement): StudioViewer {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x0b1224);
 
-  const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 200);
-  camera.position.set(4.5, 3.5, 6);
+  // Camera framed for mm-scale objects (~20–40 mm)
+  const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 2000);
+  camera.position.set(45, 35, 55);
 
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -66,22 +90,23 @@ export function createStudioViewer(container: HTMLElement): StudioViewer {
 
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
-  controls.target.set(0, 0.6, 0);
+  controls.target.set(0, 8, 0);
 
-  const hemi = new THREE.HemisphereLight(0xffffff, 0x334155, 1.1);
-  scene.add(hemi);
-  const dir = new THREE.DirectionalLight(0xffffff, 1.2);
-  dir.position.set(4, 8, 5);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x334155, 1.15));
+  const dir = new THREE.DirectionalLight(0xffffff, 1.15);
+  dir.position.set(40, 80, 50);
   scene.add(dir);
   const fill = new THREE.DirectionalLight(0x38bdf8, 0.35);
-  fill.position.set(-4, 2, -3);
+  fill.position.set(-40, 20, -30);
   scene.add(fill);
 
-  const grid = new THREE.GridHelper(10, 20, 0x334155, 0x1e293b);
+  const grid = new THREE.GridHelper(80, 16, 0x334155, 0x1e293b);
   scene.add(grid);
 
   const root = new THREE.Group();
   scene.add(root);
+  let current: THREE.Object3D | null = null;
+  const basePositions = new Map<THREE.Object3D, THREE.Vector3>();
 
   const resize = () => {
     const w = container.clientWidth || 1;
@@ -109,12 +134,40 @@ export function createStudioViewer(container: HTMLElement): StudioViewer {
     controls,
     root,
     setRoot(object) {
-      while (root.children.length) root.remove(root.children[0]!);
+      if (current) {
+        root.remove(current);
+        disposeObject3D(current);
+      }
+      current = object;
       root.add(object);
+      basePositions.clear();
+      object.children.forEach((c) => basePositions.set(c, c.position.clone()));
+    },
+    setExploded(gapMm) {
+      if (!current) return;
+      current.children.forEach((c, i) => {
+        const base = basePositions.get(c) ?? c.position;
+        c.position.set(base.x + i * gapMm, base.y, base.z);
+      });
+    },
+    fitToObject(padding = 1.6) {
+      if (!current) return;
+      const box = new THREE.Box3().setFromObject(current);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z, 1);
+      const dist = maxDim * padding;
+      controls.target.copy(center);
+      camera.position.set(center.x + dist, center.y + dist * 0.7, center.z + dist);
+      camera.near = Math.max(0.01, maxDim / 200);
+      camera.far = maxDim * 50;
+      camera.updateProjectionMatrix();
+      controls.update();
     },
     dispose() {
       cancelAnimationFrame(frame);
       ro.disconnect();
+      if (current) disposeObject3D(current);
       controls.dispose();
       renderer.dispose();
       container.innerHTML = '';
@@ -122,21 +175,95 @@ export function createStudioViewer(container: HTMLElement): StudioViewer {
   };
 }
 
-export function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-export function exportStl(object: THREE.Object3D, filename: string) {
-  const exporter = new STLExporter();
-  const result = exporter.parse(object, { binary: false });
-  downloadBlob(new Blob([result], { type: 'model/stl' }), filename);
+export function meshArraysToThree(
+  mesh: MeshArrays,
+  color: THREE.ColorRepresentation,
+): THREE.Mesh {
+  const geo = new THREE.BufferGeometry();
+  const { vertProperties: vp, triVerts: tv, numProp } = mesh;
+  const vCount = vp.length / numProp;
+  const positions = new Float32Array(vCount * 3);
+  for (let i = 0; i < vCount; i++) {
+    positions[i * 3] = vp[i * numProp]!;
+    positions[i * 3 + 1] = vp[i * numProp + 1]!;
+    positions[i * 3 + 2] = vp[i * numProp + 2]!;
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setIndex(new THREE.BufferAttribute(tv, 1));
+  geo.computeVertexNormals();
+  return new THREE.Mesh(
+    geo,
+    new THREE.MeshStandardMaterial({
+      color,
+      roughness: 0.45,
+      metalness: 0.05,
+    }),
+  );
 }
 
 export function hexToColor(hex: string): THREE.Color {
   return new THREE.Color(hex);
+}
+
+export function debounce<T extends (...args: never[]) => void>(fn: T, ms = 180): T {
+  let t = 0;
+  return ((...args: Parameters<T>) => {
+    window.clearTimeout(t);
+    t = window.setTimeout(() => fn(...args), ms);
+  }) as T;
+}
+
+export function setStatus(el: HTMLElement | null, msg: string, kind: 'ok' | 'warn' | 'err' = 'ok') {
+  if (!el) return;
+  el.textContent = msg;
+  el.dataset.kind = kind;
+}
+
+export function saveProject(key: string, data: unknown) {
+  localStorage.setItem(`3dch:${key}`, JSON.stringify(data));
+}
+
+export function loadProject<T>(key: string): T | null {
+  try {
+    const raw = localStorage.getItem(`3dch:${key}`);
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeHashParams(params: Record<string, string | number | boolean>) {
+  const sp = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) sp.set(k, String(v));
+  history.replaceState(null, '', `#${sp.toString()}`);
+}
+
+export function readHashParams(): Record<string, string> {
+  const raw = location.hash.replace(/^#/, '');
+  if (!raw) return {};
+  const sp = new URLSearchParams(raw);
+  const out: Record<string, string> = {};
+  sp.forEach((v, k) => {
+    out[k] = v;
+  });
+  return out;
+}
+
+export function exportGlb(object: THREE.Object3D, filename: string) {
+  const exporter = new GLTFExporter();
+  exporter.parse(
+    object,
+    (result) => {
+      if (result instanceof ArrayBuffer) {
+        downloadBlob(new Blob([result], { type: 'model/gltf-binary' }), filename);
+      } else {
+        downloadBlob(
+          new Blob([JSON.stringify(result)], { type: 'model/gltf+json' }),
+          filename.replace(/\.glb$/, '.gltf'),
+        );
+      }
+    },
+    (err) => console.error(err),
+    { binary: true },
+  );
 }

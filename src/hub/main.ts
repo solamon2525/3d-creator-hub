@@ -6,30 +6,30 @@ mountShell({
   bodyHtml: `
     <main class="hub">
       <section class="hero">
-        <h1>สร้างของ 3D ในเบราว์เซอร์</h1>
+        <h1>สร้างของ 3D พิมพ์ได้ในเบราว์เซอร์</h1>
         <p>
-          Hub รวมหลายระบบ: คีย์แคป, คลิกเกอร์ชื่อ, และตัวการ์ตูน 3D
-          ปรับแต่งแล้วดาวน์โหลด STL ไปพิมพ์ได้ทันที — ไม่ต้องติดตั้งโปรแกรม
+          แกน manifold · หน่วย mm จริง · ฟอนต์ไทย · export 3MF หลายสี (AMS)
+          รวม Keycap / Clicker / Mascot (Relief + Avatar)
         </p>
       </section>
       <section class="cards">
         <a class="card" href="${withBase('keycap/')}">
           <div class="emoji">⌨️</div>
           <h2>Keycap Studio</h2>
-          <p>สร้างคีย์แคปทรงกลม/สี่เหลี่ยม พร้อมตัวอักษรและสี filament</p>
-          <span class="pill">พิมพ์ได้ · STL</span>
+          <p>1u · MX stem จริง · ตัวอักษรไทยนูน · icon/SVG · 3MF สองสี</p>
+          <span class="pill">พิมพ์ได้ · 3MF</span>
         </a>
         <a class="card" href="${withBase('clicker/')}">
           <div class="emoji">🔘</div>
           <h2>Clicker Studio</h2>
-          <p>คลิกเกอร์ชื่อ — พิมพ์ชื่อบนปุ่มกด สไตล์ fidget พร้อม preview 3D</p>
-          <span class="pill">ชื่อ / ตัวอักษร</span>
+          <p>ชื่อไทย / รูป / SVG · MX socket · พวงกุญแจ · หลายสี</p>
+          <span class="pill">text · image · SVG</span>
         </a>
         <a class="card" href="${withBase('mascot/')}">
           <div class="emoji">🎭</div>
           <h2>Mascot Studio</h2>
-          <p>ตัวการ์ตูน chibi ปรับหน้า ผม สีเสื้อ — export STL หรือใช้เป็น mascot</p>
-          <span class="pill">ตัวการ์ตูน 3D</span>
+          <p>แท็บ Relief พิมพ์นูนจากรูป · แท็บ Avatar แต่งตัวละคร export GLB</p>
+          <span class="pill">Relief + Avatar</span>
         </a>
       </section>
     </main>

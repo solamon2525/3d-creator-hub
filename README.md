@@ -1,45 +1,60 @@
 # 3D Creator Hub
 
-เว็บแอปสร้างของ 3D ในเบราว์เซอร์ รวมหลายระบบในที่เดียว
+Browser tools that generate **printable** 3D models (mm-true geometry) for keycaps, MX clickers, and mascot reliefs/avatars.
 
 **Live:** https://solamon2525.github.io/3d-creator-hub/
 
-## ระบบที่มี
+## Studios
 
-| Studio | URL | ทำอะไร |
-|--------|-----|--------|
-| Hub | `/` | หน้าเลือกเครื่องมือ |
-| Keycap | `/keycap/` | คีย์แคป + ตัวอักษร + สี → STL |
-| Clicker | `/clicker/` | คลิกเกอร์ชื่อ (สไตล์ fidget) → STL |
-| Mascot | `/mascot/` | ตัวการ์ตูน chibi ปรับแต่งได้ → STL |
+| Studio | Path | Output |
+|--------|------|--------|
+| Hub | `/` | Overview |
+| Keycap | `/keycap/` | MX stem · Thai/Latin extruded legend · icon/SVG · **3MF** (body+legend) / STL |
+| Clicker | `/clicker/` | Nesting cap · MX socket · text/image/SVG · keychain · AMS or Z-band · **3MF** / STL |
+| Mascot | `/mascot/` | **Relief** printable multi-color · **Avatar** chibi slots → GLB/STL |
 
-## รันในเครื่อง
+## Units & print
+
+- **1 Three.js / manifold unit = 1 mm**
+- Prefer **3MF** (multi-part colors for AMS). STL merges to one solid (no color).
+- Keycap: print legend-down; usually no supports.
+- Clicker: print upright; No-AMS mode stacks Z-bands — add pause layers in the slicer when changing filament.
+- Open exports in Bambu Studio / Orca / PrusaSlicer and verify bounding box in mm.
+
+## Fonts (OFL)
+
+Bundled via jsDelivr Google Fonts OFL:
+
+- Thai+Latin: Sarabun, Kanit, Prompt  
+- Latin display: Oswald, Bebas Neue  
+
+Glyphs are converted with **opentype.js → closed rings → manifold extrude** (not canvas textures).
+
+## Architecture
+
+- **Three.js** = preview only  
+- **manifold-3d** = watertight solids / boolean  
+- **fflate** = multi-part 3MF zip  
+- **d3-contour** = image/SVG → color regions → relief  
+
+Shared code lives under `src/shared/` (`units`, `geometry`, `export`, `studio`).
+
+## Develop
 
 ```bash
 pnpm install
 pnpm dev
 ```
 
-เปิด http://localhost:5173
-
-## Build
-
 ```bash
 pnpm build
 pnpm preview
 ```
 
-## เทคโนโลยี
+GitHub Pages builds with `GITHUB_ACTIONS=true` so Vite `base` is `/3d-creator-hub/`.
 
-- Vite + TypeScript
-- Three.js (preview + OrbitControls + STLExporter)
-- GitHub Pages (Actions)
+## Mascot GLB parts
 
-## แผนถัดไป
+Optional pack path: `public/mascot/{hair,face,body,acc}/*.glb` — see `public/mascot/README.md`. UI works with primitives until files are added.
 
-- [ ] manifold-3d สำหรับ geometry พิมพ์จริง (MX socket)
-- [ ] ฟอนต์ไทย (opentype.js + Kanit/Sarabun)
-- [ ] export 3MF หลายสี
-- [ ] Mascot จาก GLB parts (Blender)
-
-แรงบันดาลใจจาก [VostokLabs Clicker-Generator](https://vostoklabs.github.io/Clicker-Generator/)
+Inspired by [VostokLabs Clicker-Generator](https://vostoklabs.github.io/Clicker-Generator/) (architecture ideas only).

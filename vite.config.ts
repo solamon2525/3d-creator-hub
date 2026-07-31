@@ -5,7 +5,14 @@ const base = process.env.GITHUB_ACTIONS ? '/3d-creator-hub/' : '/';
 
 export default defineConfig({
   base,
+  optimizeDeps: {
+    exclude: ['manifold-3d'],
+  },
+  worker: {
+    format: 'es',
+  },
   build: {
+    target: 'esnext',
     rollupOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
