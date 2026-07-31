@@ -88,6 +88,55 @@ button, input, select, textarea {
   max-width: 60ch;
   line-height: 1.6;
 }
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem !important;
+  max-width: none !important;
+}
+.features-page .feat-block {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.15rem 1.25rem 1.25rem;
+  margin-bottom: 1rem;
+  box-shadow: var(--shadow);
+}
+.features-page .feat-block h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.2rem;
+}
+.features-page .feat-block h3 {
+  margin: 0.85rem 0 0.35rem;
+  font-size: 0.95rem;
+  color: var(--accent-2);
+}
+.features-page .feat-lead {
+  margin: 0 0 0.65rem;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+.features-page .feat-list {
+  margin: 0 0 0.85rem;
+  padding-left: 1.2rem;
+  color: var(--text);
+  line-height: 1.55;
+  font-size: 0.92rem;
+}
+.features-page .feat-list li { margin: 0.28rem 0; }
+.features-page .feat-list code {
+  font-size: 0.82em;
+  padding: 0.1rem 0.35rem;
+  border-radius: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+.features-page .muted-block {
+  opacity: 0.85;
+}
+.features-page .muted-block .feat-list { color: var(--muted); }
 .cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));

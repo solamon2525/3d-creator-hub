@@ -11,18 +11,21 @@ mountShell({
           แกน manifold · หน่วย mm จริง · ฟอนต์ไทย · export 3MF หลายสี (AMS)
           รวม Keycap / Clicker / Mascot (Relief + Avatar)
         </p>
+        <p class="hero-actions">
+          <a class="btn primary" href="${withBase('features/')}">📋 สรุปฟีเจอร์ทั้งหมด</a>
+        </p>
       </section>
       <section class="cards">
         <a class="card" href="${withBase('keycap/')}">
           <div class="emoji">⌨️</div>
           <h2>Keycap Studio</h2>
-          <p>1u · MX stem จริง · ตัวอักษรไทยนูน · icon/SVG · 3MF สองสี</p>
+          <p>1u–2u · MX stem จริง · ตัวอักษรไทยนูน · icon/SVG · 3MF สองสี</p>
           <span class="pill">พิมพ์ได้ · 3MF</span>
         </a>
         <a class="card" href="${withBase('clicker/')}">
           <div class="emoji">🔘</div>
           <h2>Clicker Studio</h2>
-          <p>ชื่อไทย / รูป / SVG · MX socket · พวงกุญแจ · หลายสี</p>
+          <p>ชื่อไทย / รูป / SVG · MX socket · พวงกุญแจ · AMS / Z-band</p>
           <span class="pill">text · image · SVG</span>
         </a>
         <a class="card" href="${withBase('mascot/')}">
@@ -30,6 +33,12 @@ mountShell({
           <h2>Mascot Studio</h2>
           <p>แท็บ Relief พิมพ์นูนจากรูป · แท็บ Avatar แต่งตัวละคร export GLB</p>
           <span class="pill">Relief + Avatar</span>
+        </a>
+        <a class="card" href="${withBase('features/')}">
+          <div class="emoji">📋</div>
+          <h2>สรุปฟีเจอร์</h2>
+          <p>เปิดดูรายการความสามารถทั้งหมดของโปรแกรมแบบรวดเดียว</p>
+          <span class="pill">คู่มือในแอป</span>
         </a>
       </section>
     </main>

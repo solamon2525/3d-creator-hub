@@ -19,6 +19,7 @@ export default defineConfig({
         keycap: resolve(__dirname, 'keycap/index.html'),
         clicker: resolve(__dirname, 'clicker/index.html'),
         mascot: resolve(__dirname, 'mascot/index.html'),
+        features: resolve(__dirname, 'features/index.html'),
       },
     },
   },
