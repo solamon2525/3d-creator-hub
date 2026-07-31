@@ -2,7 +2,8 @@
 
 Browser tools that generate **printable** 3D models (mm-true geometry) for keycaps, MX clickers, and mascot reliefs/avatars.
 
-**Live:** https://solamon2525.github.io/3d-creator-hub/
+**Live:** https://solamon2525.github.io/3d-creator-hub/  
+**Roadmap:** [ROADMAP.md](./ROADMAP.md) · in-app [ฟีเจอร์](https://solamon2525.github.io/3d-creator-hub/features/)
 
 ## Studios
 
