@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {
+  captureCoverPng,
   createStudioViewer,
   debounce,
   loadProject,
@@ -307,8 +308,8 @@ mountShell({
         <div class="field"><label for="keychainStyle">แบบห่วง</label><select id="keychainStyle"><option value="loop">Loop</option><option value="hole">Hole</option></select></div>
         <div class="field"><label><input id="exploded" type="checkbox"/> Exploded</label></div>
         <div class="actions">
-          <button class="btn primary" id="export3mf">3MF</button>
-          <button class="btn" id="exportStl">STL</button>
+          <button class="btn primary" id="export3mf">3MF + Cover</button>
+          <button class="btn" id="exportStl">STL + Cover</button>
           <button class="btn" id="saveProj">บันทึก</button>
         </div>
         <div class="hint">ฝา nest ใน bezel · MX socket จริง · ลายเป็น mesh พิมพ์ได้</div>
@@ -424,8 +425,16 @@ q<HTMLInputElement>('file').onchange = async (e) => {
   syncMode();
   rebuildDebounced();
 };
-q<HTMLButtonElement>('export3mf').onclick = () => exportParts(lastParts, `clicker-${state.name}`, '3mf');
-q<HTMLButtonElement>('exportStl').onclick = () => exportParts(lastParts, `clicker-${state.name}`, 'stl');
+q<HTMLButtonElement>('export3mf').onclick = () => {
+  const base = `clicker-${state.name}`;
+  exportParts(lastParts, base, '3mf');
+  captureCoverPng(viewer, base);
+};
+q<HTMLButtonElement>('exportStl').onclick = () => {
+  const base = `clicker-${state.name}`;
+  exportParts(lastParts, base, 'stl');
+  captureCoverPng(viewer, base);
+};
 q<HTMLButtonElement>('saveProj').onclick = () => {
   saveProject('clicker', state);
   setStatus(statusEl, 'บันทึกแล้ว', 'ok');

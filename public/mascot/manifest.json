@@ -1,0 +1,20 @@
+{
+  "hair": [
+    "short",
+    "spiky",
+    "bob"
+  ],
+  "face": [
+    "round",
+    "happy",
+    "dot"
+  ],
+  "body": [
+    "default",
+    "head"
+  ],
+  "acc": [
+    "none",
+    "badge"
+  ]
+}

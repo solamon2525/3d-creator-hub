@@ -37,7 +37,7 @@ mountShell({
         <p class="feat-lead">สร้างคีย์แคปพิมพ์ได้ กดกับสวิตช์ Cherry MX ได้</p>
         <ul class="feat-list">
           <li>MX stem ขนาดมาตรฐาน + ปรับ stem tolerance</li>
-          <li>ขนาดคีย์ <strong>1u / 1.25u / 1.5u / 2u</strong></li>
+          <li>ขนาดคีย์ <strong>1u / 1.25u / 1.5u / 2u</strong> · 2u มี <strong>2 MX stems</strong> ระยะ pitch 19.05 mm</li>
           <li>รูปทรง: rounded · square · circle</li>
           <li>Legend: ข้อความไทย/อังกฤษ · ไอคอน · อัปโหลด SVG</li>
           <li>ปรับขนาดตัวอักษร / ความนูนแยกจากขนาดพื้น</li>
@@ -76,8 +76,8 @@ mountShell({
         <ul class="feat-list">
           <li>ตัว chibi: ผม / ตา / ผิว / เสื้อ / กางเกง / blush</li>
           <li>Library พร้อมใช้: คำไผ่ · Sky · Berry</li>
-          <li>Export <strong>GLB</strong> (ดิจิทัล) และ <strong>STL</strong></li>
-          <li>Slot API พร้อมรับ GLB ใน <code>public/mascot/{hair,face,body,acc}/</code></li>
+          <li>Export <strong>GLB</strong> / <strong>STL</strong> + รูป cover PNG</li>
+          <li>โหลดชิ้นส่วนจาก <code>public/mascot/{hair,face,body,acc}/*.glb</code> (มี pack พื้นฐานใน repo)</li>
         </ul>
         <a class="btn" href="${withBase('mascot/')}">เปิด Mascot →</a>
       </section>
@@ -86,6 +86,7 @@ mountShell({
         <h2>พิมพ์ / ไฟล์</h2>
         <ul class="feat-list">
           <li>แนะนำเปิด 3MF ใน Bambu Studio / Orca / PrusaSlicer แล้วเช็กขนาด mm</li>
+          <li>ทุกครั้งที่ export จะได้ <strong>cover PNG 1280×720</strong> คู่ไฟล์โมเดล</li>
           <li>Keycap: พิมพ์คว่ำหน้า (legend ลง bed) มักไม่ต้อง support</li>
           <li>Clicker: พิมพ์ตั้ง · โหมด Z-band ให้ใส่ pause ตอนเปลี่ยนเส้นใน slicer</li>
           <li>ฟอนต์เป็น OFL — ใช้พิมพ์/แจกจ่ายโมเดลได้ตามสัญญาอนุญาตฟอนต์</li>
@@ -97,7 +98,6 @@ mountShell({
         <ul class="feat-list">
           <li>ร้านค้า / ชำระเงิน / MakerWorld pack</li>
           <li>AI สร้างรูปในแอป</li>
-          <li>คีย์แคป multi-stem เต็มรูปแบบสำหรับหลาย unit</li>
         </ul>
       </section>
     </main>

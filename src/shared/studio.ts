@@ -268,3 +268,30 @@ export function exportGlb(object: THREE.Object3D, filename: string) {
     { binary: true },
   );
 }
+
+export function captureCoverPng(
+  viewer: StudioViewer,
+  basename: string,
+  opts: { width?: number; height?: number } = {},
+) {
+  const width = opts.width ?? 1280;
+  const height = opts.height ?? 720;
+  const { renderer, scene, camera, controls } = viewer;
+  const prevW = renderer.domElement.width;
+  const prevH = renderer.domElement.height;
+  const prevAspect = camera.aspect;
+  renderer.setSize(width, height, false);
+  camera.aspect = width / height;
+  camera.updateProjectionMatrix();
+  controls.update();
+  renderer.render(scene, camera);
+  const url = renderer.domElement.toDataURL('image/png');
+  renderer.setSize(prevW, prevH, false);
+  camera.aspect = prevAspect;
+  camera.updateProjectionMatrix();
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${basename}-cover.png`;
+  a.click();
+}
+

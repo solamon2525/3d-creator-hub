@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import {
+  captureCoverPng,
   createStudioViewer,
   debounce,
   exportGlb,
@@ -20,19 +21,25 @@ import { hexToRgb } from '../shared/units';
 import { imageFileToRegions, svgTextToRegions, type ColorRegion } from '../shared/geometry/imageToRegions';
 import type { Ring } from '../shared/geometry/textToContours';
 import { PRINT_TIPS_MASCOT } from '../shared/ui/presets';
-import { withBase } from '../shared/studio';
+import { assembleMascotFromGlb, MASCOT_PARTS } from '../shared/mascot/parts';
 
 type Tab = 'relief' | 'avatar';
 type Hair = 'short' | 'spiky' | 'bob' | 'none';
 type Eyes = 'round' | 'happy' | 'dot';
-
-/** Slot API — swap primitives for GLB when files exist under public/mascot/. */
-export type MascotSlot = 'hair' | 'face' | 'body' | 'acc';
-export type MascotPartDef = { id: string; label: string; glb?: string };
+type Acc = 'none' | 'badge';
 
 export const MASCOT_LIBRARY: Record<
   string,
-  { name: string; skin: string; hairColor: string; shirt: string; pants: string; hair: Hair; eyes: Eyes }
+  {
+    name: string;
+    skin: string;
+    hairColor: string;
+    shirt: string;
+    pants: string;
+    hair: Hair;
+    eyes: Eyes;
+    acc: Acc;
+  }
 > = {
   kampai: {
     name: 'คำไผ่',
@@ -42,6 +49,7 @@ export const MASCOT_LIBRARY: Record<
     pants: '#0f172a',
     hair: 'short',
     eyes: 'round',
+    acc: 'badge',
   },
   sky: {
     name: 'Sky',
@@ -51,6 +59,7 @@ export const MASCOT_LIBRARY: Record<
     pants: '#1e3a5f',
     hair: 'spiky',
     eyes: 'happy',
+    acc: 'none',
   },
   berry: {
     name: 'Berry',
@@ -60,12 +69,9 @@ export const MASCOT_LIBRARY: Record<
     pants: '#4c0519',
     hair: 'bob',
     eyes: 'dot',
+    acc: 'badge',
   },
 };
-
-export function mascotPartUrl(slot: MascotSlot, id: string): string {
-  return withBase(`mascot/${slot}/${id}.glb`);
-}
 
 type State = {
   tab: Tab;
@@ -75,14 +81,15 @@ type State = {
   maxColors: number;
   baseColor: string;
   keychain: boolean;
-  // avatar
   skin: string;
   hairColor: string;
   shirt: string;
   pants: string;
   hair: Hair;
   eyes: Eyes;
+  acc: Acc;
   blush: boolean;
+  useGlb: boolean;
 };
 
 const state: State = {
@@ -99,7 +106,9 @@ const state: State = {
   pants: '#0f172a',
   hair: 'short',
   eyes: 'round',
+  acc: 'badge',
   blush: true,
+  useGlb: true,
 };
 Object.assign(state, loadProject<Partial<State>>('mascot') ?? {});
 
@@ -119,7 +128,8 @@ function mat(color: string, opts: Partial<THREE.MeshStandardMaterialParameters> 
   return new THREE.MeshStandardMaterial({ color, roughness: 0.55, metalness: 0.05, ...opts });
 }
 
-function buildAvatar(): THREE.Group {
+/** Primitive fallback if GLB pack missing. */
+function buildAvatarPrimitive(): THREE.Group {
   const g = new THREE.Group();
   const legMat = mat(state.pants);
   const legL = new THREE.Mesh(new THREE.CylinderGeometry(1.8, 2, 7, 16), legMat);
@@ -208,28 +218,32 @@ function buildAvatar(): THREE.Group {
   mouth.position.set(0, 17.8, 4.4);
   mouth.rotation.x = Math.PI;
   g.add(mouth);
-
-  // name plate
-  const canvas = document.createElement('canvas');
-  canvas.width = 256;
-  canvas.height = 64;
-  const ctx = canvas.getContext('2d')!;
-  ctx.fillStyle = 'rgba(15,23,42,0.9)';
-  ctx.fillRect(0, 0, 256, 64);
-  ctx.fillStyle = '#f8fafc';
-  ctx.font = 'bold 28px Sarabun, Segoe UI, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(state.name.slice(0, 12), 128, 34);
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  const plate = new THREE.Mesh(
-    new THREE.PlaneGeometry(14, 3.5),
-    new THREE.MeshStandardMaterial({ map: tex, transparent: true }),
-  );
-  plate.position.set(0, 0.5, 11);
-  g.add(plate);
   return g;
+}
+
+async function buildAvatar(): Promise<{ group: THREE.Group; note: string }> {
+  if (state.useGlb) {
+    const { group, usedGlb, missing } = await assembleMascotFromGlb({
+      hair: state.hair,
+      face: state.eyes,
+      acc: state.acc,
+      skin: state.skin,
+      hairColor: state.hairColor,
+      shirt: state.shirt,
+      pants: state.pants,
+      blush: state.blush,
+      name: state.name,
+    });
+    if (usedGlb || group.children.length > 2) {
+      return {
+        group,
+        note: missing.length
+          ? `GLB pack · ขาด ${missing.join(', ')}`
+          : 'GLB pack · hair/face/body/acc',
+      };
+    }
+  }
+  return { group: buildAvatarPrimitive(), note: 'primitives (fallback)' };
 }
 
 async function buildRelief() {
@@ -258,7 +272,8 @@ async function buildRelief() {
       baseH + 1,
       false,
     );
-    const loop = await (await import('../shared/geometry/manifoldOps')).difference(lug, hole);
+    const { difference } = await import('../shared/geometry/manifoldOps');
+    const loop = await difference(lug, hole);
     base = await union(base, loop);
     disposeManifold(lug, hole, loop);
   }
@@ -288,6 +303,16 @@ async function buildRelief() {
   return { group, parts, warnings: warns };
 }
 
+const hairOpts = MASCOT_PARTS.hair
+  .map((p) => `<option value="${p.id}">${p.label}</option>`)
+  .join('');
+const faceOpts = MASCOT_PARTS.face
+  .map((p) => `<option value="${p.id}">${p.label}</option>`)
+  .join('');
+const accOpts = MASCOT_PARTS.acc
+  .map((p) => `<option value="${p.id}">${p.label}</option>`)
+  .join('');
+
 mountShell({
   title: 'Mascot Studio',
   active: 'mascot',
@@ -295,7 +320,7 @@ mountShell({
     <div class="studio">
       <aside class="panel">
         <h1>Mascot Studio</h1>
-        <p class="desc">แท็บ Relief พิมพ์ได้ · แท็บ Avatar แต่งตัวละคร</p>
+        <p class="desc">แท็บ Relief พิมพ์ได้ · แท็บ Avatar โหลด GLB pack</p>
         <div class="tabs">
           <button type="button" id="tabRelief" class="active">Relief พิมพ์</button>
           <button type="button" id="tabAvatar">Avatar</button>
@@ -308,8 +333,8 @@ mountShell({
           <div class="field"><label for="baseColor">สีฐาน</label><input id="baseColor" type="color" value="${state.baseColor}"/></div>
           <div class="field"><label><input id="keychain" type="checkbox" ${state.keychain ? 'checked' : ''}/> พวงกุญแจ</label></div>
           <div class="actions">
-            <button class="btn primary" id="export3mf">3MF</button>
-            <button class="btn" id="exportStl">STL</button>
+            <button class="btn primary" id="export3mf">3MF + Cover</button>
+            <button class="btn" id="exportStl">STL + Cover</button>
           </div>
         </div>
         <div id="avatarPanel" class="hidden">
@@ -320,8 +345,9 @@ mountShell({
             <button type="button" data-lib="berry">Berry</button>
           </div>
           <div class="field"><label for="name">ชื่อ</label><input id="name" maxlength="12" value="${state.name}"/></div>
-          <div class="field"><label for="hair">ทรงผม</label><select id="hair"><option value="short">Short</option><option value="spiky">Spiky</option><option value="bob">Bob</option><option value="none">Bald</option></select></div>
-          <div class="field"><label for="eyes">ตา</label><select id="eyes"><option value="round">Round</option><option value="happy">Happy</option><option value="dot">Dot</option></select></div>
+          <div class="field"><label for="hair">ทรงผม (GLB)</label><select id="hair">${hairOpts}</select></div>
+          <div class="field"><label for="eyes">หน้า (GLB)</label><select id="eyes">${faceOpts}</select></div>
+          <div class="field"><label for="acc">เครื่องประดับ</label><select id="acc">${accOpts}</select></div>
           <div class="row">
             <div class="field"><label for="skin">ผิว</label><input id="skin" type="color" value="${state.skin}"/></div>
             <div class="field"><label for="hairColor">ผม</label><input id="hairColor" type="color" value="${state.hairColor}"/></div>
@@ -331,17 +357,18 @@ mountShell({
             <div class="field"><label for="pants">กางเกง</label><input id="pants" type="color" value="${state.pants}"/></div>
           </div>
           <div class="field"><label><input id="blush" type="checkbox" ${state.blush ? 'checked' : ''}/> Blush</label></div>
-          <div class="hint">Slot API พร้อม — ใส่ GLB ใน public/mascot/&#123;hair,face,body,acc&#125;/ ภายหลังได้</div>
+          <div class="field"><label><input id="useGlb" type="checkbox" ${state.useGlb ? 'checked' : ''}/> ใช้ GLB pack</label></div>
+          <div class="hint">ไฟล์ใน public/mascot/{hair,face,body,acc}/ · regenerate: node scripts/gen-mascot-glb.mjs</div>
           <div class="actions">
-            <button class="btn primary" id="exportGlb">GLB</button>
-            <button class="btn" id="exportAvatarStl">STL</button>
+            <button class="btn primary" id="exportGlb">GLB + Cover</button>
+            <button class="btn" id="exportAvatarStl">STL + Cover</button>
           </div>
         </div>
         <div class="actions" style="margin-top:0.5rem"><button class="btn" id="saveProj">บันทึก</button></div>
         ${PRINT_TIPS_MASCOT}
         <div class="status" id="status">โหลด…</div>
       </aside>
-      <div class="stage-wrap"><div id="stage" style="width:100%;height:100%"></div><div class="stage-label">Relief = mm · Avatar = display units</div></div>
+      <div class="stage-wrap"><div id="stage" style="width:100%;height:100%"></div><div class="stage-label">Relief = mm · Avatar = GLB/display</div></div>
     </div>`,
 });
 
@@ -362,13 +389,14 @@ async function rebuild() {
   setStatus(statusEl, 'กำลังสร้าง…', 'warn');
   try {
     if (state.tab === 'avatar') {
-      avatarRoot = buildAvatar();
+      const { group, note } = await buildAvatar();
+      avatarRoot = group;
       lastParts = [];
       viewer.setRoot(avatarRoot);
       viewer.camera.position.set(35, 30, 45);
       viewer.controls.target.set(0, 12, 0);
       viewer.fitToObject(2.4);
-      setStatus(statusEl, 'Avatar พร้อม · export GLB/STL', 'ok');
+      setStatus(statusEl, `Avatar พร้อม · ${note}`, 'ok');
       return;
     }
     const { group, parts, warnings } = await buildRelief();
@@ -376,7 +404,11 @@ async function rebuild() {
     avatarRoot = null;
     viewer.setRoot(group);
     viewer.fitToObject(2.0);
-    setStatus(statusEl, warnings.length ? warnings.join(' · ') : `Relief พร้อม · ${parts.length} ส่วน`, warnings.length ? 'warn' : 'ok');
+    setStatus(
+      statusEl,
+      warnings.length ? warnings.join(' · ') : `Relief พร้อม · ${parts.length} ส่วน`,
+      warnings.length ? 'warn' : 'ok',
+    );
   } catch (e) {
     setStatus(statusEl, e instanceof Error ? e.message : String(e), 'err');
   }
@@ -394,6 +426,7 @@ document.querySelectorAll<HTMLButtonElement>('#libPresets button').forEach((btn)
     q<HTMLInputElement>('name').value = state.name;
     q<HTMLSelectElement>('hair').value = state.hair;
     q<HTMLSelectElement>('eyes').value = state.eyes;
+    q<HTMLSelectElement>('acc').value = state.acc;
     for (const idc of ['skin', 'hairColor', 'shirt', 'pants'] as const) {
       q<HTMLInputElement>(idc).value = state[idc];
     }
@@ -444,6 +477,11 @@ q<HTMLSelectElement>('eyes').onchange = (e) => {
   state.eyes = (e.target as HTMLSelectElement).value as Eyes;
   rebuildDebounced();
 };
+q<HTMLSelectElement>('acc').value = state.acc;
+q<HTMLSelectElement>('acc').onchange = (e) => {
+  state.acc = (e.target as HTMLSelectElement).value as Acc;
+  rebuildDebounced();
+};
 for (const id of ['skin', 'hairColor', 'shirt', 'pants'] as const) {
   q<HTMLInputElement>(id).oninput = (e) => {
     state[id] = (e.target as HTMLInputElement).value;
@@ -454,14 +492,27 @@ q<HTMLInputElement>('blush').onchange = (e) => {
   state.blush = (e.target as HTMLInputElement).checked;
   rebuildDebounced();
 };
-q<HTMLButtonElement>('export3mf').onclick = () => exportParts(lastParts, `mascot-relief-${state.name}`, '3mf');
-q<HTMLButtonElement>('exportStl').onclick = () => exportParts(lastParts, `mascot-relief-${state.name}`, 'stl');
+q<HTMLInputElement>('useGlb').onchange = (e) => {
+  state.useGlb = (e.target as HTMLInputElement).checked;
+  rebuildDebounced();
+};
+
+function doExportParts(format: '3mf' | 'stl') {
+  const base = `mascot-relief-${state.name}`;
+  exportParts(lastParts, base, format);
+  captureCoverPng(viewer, base);
+}
+
+q<HTMLButtonElement>('export3mf').onclick = () => doExportParts('3mf');
+q<HTMLButtonElement>('exportStl').onclick = () => doExportParts('stl');
 q<HTMLButtonElement>('exportGlb').onclick = () => {
-  if (avatarRoot) exportGlb(avatarRoot, `mascot-${state.name}.glb`);
+  if (!avatarRoot) return;
+  const base = `mascot-${state.name}`;
+  exportGlb(avatarRoot, `${base}.glb`);
+  captureCoverPng(viewer, base);
 };
 q<HTMLButtonElement>('exportAvatarStl').onclick = () => {
   if (!avatarRoot) return;
-  // Convert avatar meshes roughly via three STL path — use exportParts empty fallback
   import('three/examples/jsm/exporters/STLExporter.js').then(({ STLExporter }) => {
     const exp = new STLExporter();
     const data = exp.parse(avatarRoot!, { binary: true }) as DataView;
@@ -470,6 +521,7 @@ q<HTMLButtonElement>('exportAvatarStl').onclick = () => {
     a.href = URL.createObjectURL(blob);
     a.download = `mascot-${state.name}.stl`;
     a.click();
+    captureCoverPng(viewer, `mascot-${state.name}`);
   });
 };
 q<HTMLButtonElement>('saveProj').onclick = () => {

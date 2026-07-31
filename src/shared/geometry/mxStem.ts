@@ -18,6 +18,8 @@ export const MX = {
   switchBodyZ: 11.6,
   /** Typical 1u keycap outer size. */
   unit1Outer: 18.1,
+  /** Switch center-to-center pitch on a plate. */
+  unitPitch: 19.05,
   /** Stem XY looseness (+ easier to mount). */
   defaultStemTolerance: 0.05,
 } as const;
@@ -46,4 +48,16 @@ export function mxSocketRects(tolerance: number = MX.defaultStemTolerance): {
     length: MX.socketCrossLength + tolerance,
     thickness: MX.socketCrossThickness + tolerance,
   };
+}
+
+/**
+ * Stem X offsets (mm) for multi-unit keycaps.
+ * 1–1.5u → one center stem; 2u+ → two stems on MX pitch (±9.525).
+ */
+export function stemOffsetsX(unit: number): number[] {
+  if (unit >= 2) {
+    const half = MX.unitPitch / 2;
+    return [-half, half];
+  }
+  return [0];
 }

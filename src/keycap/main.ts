@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { contours } from 'd3-contour';
 import {
+  captureCoverPng,
   createStudioViewer,
   debounce,
   meshArraysToThree,
@@ -20,7 +21,7 @@ import {
   mxCrossSolid,
   union,
 } from '../shared/geometry/manifoldOps';
-import { MX, mxCrossRects } from '../shared/geometry/mxStem';
+import { MX, mxCrossRects, stemOffsetsX } from '../shared/geometry/mxStem';
 import { exportParts, type ExportPart } from '../shared/export/parts';
 import { hexToRgb, filamentOptionsHtml } from '../shared/units';
 import { svgTextToRegions } from '../shared/geometry/imageToRegions';
@@ -198,16 +199,25 @@ async function build(): Promise<{ group: THREE.Group; parts: ExportPart[]; warni
     false,
   );
   let body = await difference(outer, cavity);
+  disposeManifold(outer, cavity);
 
-  // Stem under center; multi-unit still one MX stem (simple mode)
   const cross = mxCrossRects(state.stemTolerance);
-  const stem = await mxCrossSolid(cross.length, cross.thickness, MX.stemHeight);
-  const stemPlaced = stem.translate([0, 0, h - 0.35 - MX.stemHeight / 2]);
-  body = await union(body, stemPlaced);
-  if (state.unit > 1) warns.push(`${state.unit}u · stem เดียวตรงกลาง (ยังไม่ multi-stem)`);
+  const offsets = stemOffsetsX(state.unit);
+  const stemZ = h - 0.35 - MX.stemHeight / 2;
+  for (const ox of offsets) {
+    const stem = await mxCrossSolid(cross.length, cross.thickness, MX.stemHeight);
+    const placed = stem.translate([ox, 0, stemZ]);
+    disposeManifold(stem);
+    const next = await union(body, placed);
+    disposeManifold(body, placed);
+    body = next;
+  }
+  if (offsets.length > 1) {
+    warns.push(`${state.unit}u · ${offsets.length} stems @ ±${(MX.unitPitch / 2).toFixed(2)} mm`);
+  }
 
   const bodyMesh = manifoldToMesh(body);
-  disposeManifold(outer, cavity, stem, stemPlaced, body);
+  disposeManifold(body);
 
   let legendMesh: ReturnType<typeof manifoldToMesh> | null = null;
   try {
@@ -272,8 +282,8 @@ mountShell({
         <div class="field"><label><input id="shineThrough" type="checkbox"/> Shine-through</label></div>
         <div class="field"><label><input id="exploded" type="checkbox"/> Exploded</label></div>
         <div class="actions">
-          <button class="btn primary" id="export3mf">3MF</button>
-          <button class="btn" id="exportStl">STL</button>
+          <button class="btn primary" id="export3mf">3MF + Cover</button>
+          <button class="btn" id="exportStl">STL + Cover</button>
           <button class="btn" id="saveProj">บันทึก</button>
         </div>
         <div class="hint">พิมพ์คว่ำหน้า · 1 unit = 1 mm · MX stem · OFL fonts</div>
@@ -390,8 +400,16 @@ q<HTMLInputElement>('svgFile').onchange = async (e) => {
   syncMode();
   rebuildDebounced();
 };
-q<HTMLButtonElement>('export3mf').onclick = () => exportParts(lastParts, `keycap-${state.label || 'A'}`, '3mf');
-q<HTMLButtonElement>('exportStl').onclick = () => exportParts(lastParts, `keycap-${state.label || 'A'}`, 'stl');
+q<HTMLButtonElement>('export3mf').onclick = () => {
+  const base = `keycap-${state.label || 'A'}`;
+  exportParts(lastParts, base, '3mf');
+  captureCoverPng(viewer, base);
+};
+q<HTMLButtonElement>('exportStl').onclick = () => {
+  const base = `keycap-${state.label || 'A'}`;
+  exportParts(lastParts, base, 'stl');
+  captureCoverPng(viewer, base);
+};
 q<HTMLButtonElement>('saveProj').onclick = () => {
   saveProject('keycap', state);
   setStatus(statusEl, 'บันทึกแล้ว', 'ok');
