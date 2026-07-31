@@ -278,9 +278,10 @@ async function build() {
       const solid = await extrudeRings(region.rings, bandDepth, false);
       const placed = solid.translate([0, 0, z0]);
       const name = state.colorMode === 'zband' ? `zband-${zi}` : `decor-${zi}`;
+      const mesh = manifoldToMesh(placed);
       parts.push({
         name,
-        mesh: manifoldToMesh(placed),
+        mesh,
         colorRgb: region.rgb,
       });
       decorNames.push(name);

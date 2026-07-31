@@ -23,22 +23,66 @@ export async function getManifold(): Promise<ManifoldToplevel> {
   return modPromise;
 }
 
-/** Each ring becomes its own polygon (no holes). Union them afterward. */
+/** Close ring if first != last vertex. */
+function closeRing(ring: Ring): Array<[number, number]> {
+  const poly = ring.map(([x, y]) => [x, y] as [number, number]);
+  const a = poly[0];
+  const b = poly[poly.length - 1];
+  if (a && b && (a[0] !== b[0] || a[1] !== b[1])) poly.push([a[0], a[1]]);
+  return poly;
+}
+
+/**
+ * Extrude closed rings into a solid.
+ * Uses CrossSection + EvenOdd so Thai glyphs with holes stay correct.
+ */
 export async function extrudeRings(
   rings: Ring[],
   height: number,
   center = false,
 ): Promise<Solid> {
-  const { Manifold } = await getManifold();
-  const usable = rings.filter((r) => r.length >= 3);
+  const { Manifold, CrossSection } = await getManifold();
+  const usable = rings.filter((r) => r.length >= 3).map(closeRing);
   if (!usable.length) throw new Error('ไม่มี contour สำหรับ extrude');
-  let solid: Solid | null = null;
-  for (const ring of usable) {
-    const poly = ring.map(([x, y]) => [x, y] as [number, number]);
-    const piece = Manifold.extrude([poly], height, 0, 0, [1, 1], center);
-    solid = solid ? Manifold.union(solid, piece) : piece;
+
+  // Prefer one CrossSection so holes punch correctly (EvenOdd).
+  try {
+    const section = new CrossSection(usable, 'EvenOdd');
+    const area = section.area();
+    if (Math.abs(area) > 1e-8) {
+      const solid = Manifold.extrude(section, height, 0, 0, [1, 1], center);
+      const mesh = solid.getMesh();
+      if (mesh.triVerts.length > 0) return solid;
+      solid.delete();
+    } else {
+      section.delete();
+    }
+  } catch {
+    /* fall through to per-ring union */
   }
-  return solid!;
+
+  let solid: Solid | null = null;
+  for (const poly of usable) {
+    try {
+      const piece = Manifold.extrude([poly], height, 0, 0, [1, 1], center);
+      const m = piece.getMesh();
+      if (m.triVerts.length === 0) {
+        piece.delete();
+        continue;
+      }
+      if (!solid) solid = piece;
+      else {
+        const next: Solid = Manifold.union(solid, piece);
+        solid.delete();
+        piece.delete();
+        solid = next;
+      }
+    } catch {
+      /* skip bad ring */
+    }
+  }
+  if (!solid) throw new Error('extrude ได้ mesh ว่าง — contour ไม่ถูกต้อง');
+  return solid;
 }
 
 export async function box(
