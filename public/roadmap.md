@@ -17,7 +17,7 @@ Live: https://solamon2525.github.io/3d-creator-hub/
 | Image wizard (crop / ลบพื้น / preview สี) | ✅ | Clicker + Mascot relief |
 | บันทึก/โหลดโปรเจกต์เป็นไฟล์ JSON | ✅ | `3dch-<studio>.json` + localStorage |
 | ปรับ stem/socket tolerance จากผลพิมพ์จริง | ⏳ | ต้องการ feedback จาก filament จริง |
-| Checklist พิมพ์ในแผง (ทิศ / AMS / pause) | ⏳ | ต่อจาก tips ที่มีอยู่ |
+| Checklist พิมพ์ในแผง (ทิศ / AMS / pause) | ✅ | ติ๊กได้ · จำใน localStorage · สลับ AMS/Z-band ตาม state |
 
 ---
 
@@ -60,5 +60,6 @@ Live: https://solamon2525.github.io/3d-creator-hub/
 
 ## ประวัติสั้น
 
+- **2026-08** — Checklist พิมพ์แบบติ๊กได้ (ทิศ / AMS / Z-band pause) ทั้ง 3 studio
 - **2026-07** — Full upgrade kernel + 3 studios + multi-stem + GLB pack + cover PNG + หน้าฟีเจอร์
 - **2026-07** — เริ่มเฟส N (roadmap นี้)

@@ -28,7 +28,7 @@ import { exportParts, type ExportPart } from '../shared/export/parts';
 import { hexToRgb, filamentOptionsHtml } from '../shared/units';
 import { svgTextToRegions } from '../shared/geometry/imageToRegions';
 import { fontSelectHtml, loadFont, textToContours, warmFonts, type Ring } from '../shared/geometry/textToContours';
-import { PRINT_TIPS_KEYCAP } from '../shared/ui/presets';
+import { mountPrintChecklist, PRINT_TIPS_KEYCAP } from '../shared/ui/presets';
 
 type Shape = 'rounded' | 'square' | 'circle';
 type LegendMode = 'text' | 'icon' | 'svg';
@@ -317,6 +317,12 @@ mountShell({
 
 const viewer = createStudioViewer(document.querySelector('#stage')!);
 const statusEl = document.querySelector<HTMLElement>('#status')!;
+const checklist = mountPrintChecklist(() => ({
+  studio: 'keycap',
+  unit: state.unit,
+  stabilizer: state.stabilizer,
+  partCount: lastParts.length,
+}));
 
 async function rebuild() {
   setStatus(statusEl, 'กำลังสร้าง…', 'warn');
@@ -327,6 +333,12 @@ async function rebuild() {
     viewer.setExploded(state.exploded ? 8 : 0);
     viewer.fitToObject(2.2);
     writeHashParams({ label: state.label, size: state.size, fontId: state.fontId });
+    checklist?.refresh({
+      studio: 'keycap',
+      unit: state.unit,
+      stabilizer: state.stabilizer,
+      partCount: parts.length,
+    });
     setStatus(statusEl, warnings.length ? warnings.join(' · ') : `พร้อม · ${parts.length} ส่วน`, warnings.length ? 'warn' : 'ok');
   } catch (e) {
     setStatus(statusEl, e instanceof Error ? e.message : String(e), 'err');

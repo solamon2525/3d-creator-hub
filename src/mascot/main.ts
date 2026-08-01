@@ -26,7 +26,7 @@ import {
   type ColorRegion,
 } from '../shared/geometry/imageToRegions';
 import type { Ring } from '../shared/geometry/textToContours';
-import { PRINT_TIPS_MASCOT } from '../shared/ui/presets';
+import { mountPrintChecklist, PRINT_TIPS_MASCOT } from '../shared/ui/presets';
 import { assembleMascotFromGlb, MASCOT_PARTS } from '../shared/mascot/parts';
 
 type Tab = 'relief' | 'avatar';
@@ -424,6 +424,12 @@ mountShell({
 const viewer = createStudioViewer(document.querySelector('#stage')!);
 const statusEl = document.querySelector<HTMLElement>('#status')!;
 const q = <T extends HTMLElement>(id: string) => document.querySelector<T>(`#${id}`)!;
+const checklist = mountPrintChecklist(() => ({
+  studio: 'mascot',
+  mascotTab: state.tab,
+  keychain: state.keychain,
+  partCount: lastParts.length,
+}));
 
 function setTab(tab: Tab) {
   state.tab = tab;
@@ -445,6 +451,12 @@ async function rebuild() {
       viewer.camera.position.set(35, 30, 45);
       viewer.controls.target.set(0, 12, 0);
       viewer.fitToObject(2.4);
+      checklist?.refresh({
+        studio: 'mascot',
+        mascotTab: 'avatar',
+        keychain: state.keychain,
+        partCount: 0,
+      });
       setStatus(statusEl, `Avatar พร้อม · ${note}`, 'ok');
       return;
     }
@@ -453,6 +465,12 @@ async function rebuild() {
     avatarRoot = null;
     viewer.setRoot(group);
     viewer.fitToObject(2.0);
+    checklist?.refresh({
+      studio: 'mascot',
+      mascotTab: 'relief',
+      keychain: state.keychain,
+      partCount: parts.length,
+    });
     setStatus(
       statusEl,
       warnings.length ? warnings.join(' · ') : `Relief พร้อม · ${parts.length} ส่วน`,

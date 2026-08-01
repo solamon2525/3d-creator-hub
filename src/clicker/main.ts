@@ -29,7 +29,7 @@ import {
   svgTextToRegions,
   type ColorRegion,
 } from '../shared/geometry/imageToRegions';
-import { IMAGE_WIZARD_HINT, PRINT_TIPS_CLICKER } from '../shared/ui/presets';
+import { IMAGE_WIZARD_HINT, mountPrintChecklist, PRINT_TIPS_CLICKER } from '../shared/ui/presets';
 
 type BaseShape = 'circle' | 'square' | 'hexagon' | 'heart' | 'star';
 type ImportMode = 'text' | 'image' | 'svg' | 'icon';
@@ -364,6 +364,12 @@ mountShell({
 const viewer = createStudioViewer(document.querySelector('#stage')!);
 const statusEl = document.querySelector<HTMLElement>('#status')!;
 const q = <T extends HTMLElement>(id: string) => document.querySelector<T>(`#${id}`)!;
+const checklist = mountPrintChecklist(() => ({
+  studio: 'clicker',
+  colorMode: state.colorMode,
+  keychain: state.keychain,
+  partCount: lastParts.length,
+}));
 
 async function rebuild() {
   setStatus(statusEl, 'กำลังสร้าง…', 'warn');
@@ -375,6 +381,12 @@ async function rebuild() {
     viewer.fitToObject(2.0);
     writeHashParams({ name: state.name, size: state.size, mode: state.importMode });
     q<HTMLSelectElement>('fontId').value = state.fontId;
+    checklist?.refresh({
+      studio: 'clicker',
+      colorMode: state.colorMode,
+      keychain: state.keychain,
+      partCount: parts.length,
+    });
     setStatus(statusEl, warnings.length ? warnings.join(' · ') : `พร้อม · ${parts.length} ส่วน`, warnings.length ? 'warn' : 'ok');
   } catch (e) {
     setStatus(statusEl, e instanceof Error ? e.message : String(e), 'err');

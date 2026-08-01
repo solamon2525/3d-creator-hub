@@ -23,7 +23,7 @@ mountShell({
       <section class="feat-block">
         <h2>แผนพัฒนาระยะยาว</h2>
         <ul class="feat-list">
-          <li><strong>เฟส N (ใกล้)</strong> — stabilizer 2u · image wizard · ไฟล์โปรเจกต์ JSON ✅ เริ่มแล้ว</li>
+          <li><strong>เฟส N (ใกล้)</strong> — stabilizer · image wizard · JSON · checklist พิมพ์ ✅ · ค้าง: tolerance จากพิมพ์จริง</li>
           <li><strong>เฟส M (กลาง)</strong> — Blender pack · AMS ละเอียด · แชร์ลิงก์ · ชุดพิมพ์</li>
           <li><strong>เฟส L (ยาว)</strong> — MakerWorld · แกลเลอรี · AI relief · ร้านค้า</li>
         </ul>
@@ -39,7 +39,7 @@ mountShell({
           <li><strong>ฟอนต์ OFL</strong> ไทย+ละติน: Sarabun, Kanit, Prompt (+ Oswald, Bebas)</li>
           <li>ตัวอักษรเป็น <strong>mesh นูนจริง</strong> ไม่ใช่แค่ texture บนหน้าจอ</li>
           <li>บันทึก/โหลดโปรเจกต์เป็นไฟล์ <strong>JSON</strong> + localStorage · URL hash</li>
-          <li>พรีเซ็ตสีเส้นใย · เคล็ดลับพิมพ์ในแผงควบคุม</li>
+          <li>พรีเซ็ตสีเส้นใย · <strong>Checklist พิมพ์</strong> (ทิศ / AMS / pause · ติ๊กได้ · จำในเบราว์เซอร์)</li>
         </ul>
       </section>
 
@@ -69,7 +69,7 @@ mountShell({
           <li>รูป → quantize สี → regions นูนหลายสี</li>
           <li>พวงกุญแจแบบ loop / เจาะ hole</li>
           <li>สีหลายชั้น: <strong>AMS</strong> หรือ <strong>No-AMS Z-band + pause</strong></li>
-          <li>Image wizard + เคล็ดลับพิมพ์ในแผง</li>
+          <li>Image wizard + Checklist พิมพ์ (สลับ AMS / Z-band pause ตามโหมด)</li>
         </ul>
         <a class="btn" href="${withBase('clicker/')}">เปิด Clicker →</a>
       </section>
@@ -96,6 +96,7 @@ mountShell({
       <section class="feat-block">
         <h2>พิมพ์ / ไฟล์</h2>
         <ul class="feat-list">
+          <li>ในแผงสตูดิโอมี <strong>Checklist พิมพ์</strong> — ทิศวาง · AMS · pause Z-band · ติ๊กแล้วจำในเครื่อง</li>
           <li>แนะนำเปิด 3MF ใน Bambu Studio / Orca / PrusaSlicer แล้วเช็กขนาด mm</li>
           <li>ทุกครั้งที่ export จะได้ <strong>cover PNG 1280×720</strong> คู่ไฟล์โมเดล</li>
           <li>Keycap: พิมพ์คว่ำหน้า (legend ลง bed) มักไม่ต้อง support</li>
