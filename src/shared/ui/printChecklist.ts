@@ -10,6 +10,7 @@ export type PrintChecklistContext = {
   keychain?: boolean;
   mascotTab?: 'relief' | 'avatar';
   partCount?: number;
+  clickerKind?: 'classic' | 'modular';
 };
 
 type Item = {
@@ -48,6 +49,10 @@ const ITEMS: Record<StudioId, Item[]> = {
     },
   ],
   clicker: [
+    { id: 'modular-orient', label: 'ฐานมีพื้นในตัว: วางพื้นลงเตียงตามไฟล์ ตรวจใต้ลิ้นและขอบช่อง MX ใน slicer', when: c => c.clickerKind === 'modular' },
+    { id: 'modular-fit', label: 'ทดลองพิมพ์และเช็กความฝืด รางไม่มีล็อกกันเลื่อนย้อนขึ้น', when: c => c.clickerKind === 'modular' },
+    { id: 'modular-count', label: 'ตรวจชุดต้นแบบ 3 ชิ้น หรือฐาน N ตัว + หัว–ท้าย รวม N+2 ชิ้น', when: c => c.clickerKind === 'modular' },
+    { id: 'modular-mx', label: 'ช่อง MX 14.1 mm และรูห่วง 3.4 mm: ทดลองกับชิ้นส่วนจริง', when: c => c.clickerKind === 'modular' },
     {
       id: 'orient',
       label: 'ทิศ: พิมพ์ตั้ง (ฝาขึ้น) · bezel มักไม่ต้อง support',
@@ -165,7 +170,9 @@ export function mountPrintChecklist(
   };
 
   const refresh = (ctx: PrintChecklistContext) => {
-    const items = ITEMS[ctx.studio].filter((i) => !i.when || i.when(ctx));
+    const legacyOnly = ['orient','ams','zband','socket','image','keychain'];
+    const items = ITEMS[ctx.studio].filter((i) =>
+      !(ctx.studio === 'clicker' && ctx.clickerKind === 'modular' && legacyOnly.includes(i.id)) && (!i.when || i.when(ctx)));
     list.innerHTML = items
       .map((i) => {
         const on = checked.has(i.id) ? 'checked' : '';
@@ -173,7 +180,9 @@ export function mountPrintChecklist(
       })
       .join('');
 
-    if (ctx.studio === 'clicker' && ctx.colorMode === 'zband') {
+    if (ctx.studio === 'clicker' && ctx.clickerKind === 'modular') {
+      hint.textContent = `ส่งออก ${ctx.partCount ?? 3} ชิ้นแยก · ตรวจโมเดลดิจิทัลแล้ว ยังไม่ได้ทดสอบแรงยึดจากการพิมพ์จริง`;
+    } else if (ctx.studio === 'clicker' && ctx.colorMode === 'zband') {
       hint.textContent =
         'Z-band: ใน Bambu/Prusa slicer ใส่ Pause ที่ความสูงเปลี่ยนสีแต่ละชั้น';
     } else if (ctx.studio === 'clicker' && ctx.colorMode === 'ams') {

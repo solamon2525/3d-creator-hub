@@ -170,7 +170,8 @@ button, input, select, textarea {
 .studio {
   display: grid;
   grid-template-columns: minmax(260px, 320px) 1fr;
-  min-height: calc(100vh - 61px);
+  height: calc(100dvh - 65px);
+  min-height: 480px;
 }
 .panel {
   border-right: 1px solid var(--border);
@@ -264,12 +265,15 @@ button, input, select, textarea {
 }
 .stage-wrap {
   position: relative;
+  min-width: 0;
   min-height: 480px;
   background:
     radial-gradient(circle at 50% 20%, rgba(56, 189, 248, 0.12), transparent 45%),
     linear-gradient(180deg, #0b1224, #111827);
 }
 .stage-wrap canvas {
+  position: absolute;
+  inset: 0;
   display: block;
   width: 100% !important;
   height: 100% !important;
@@ -287,9 +291,11 @@ button, input, select, textarea {
 }
 
 @media (max-width: 860px) {
-  .studio { grid-template-columns: 1fr; }
+  .topbar { flex-wrap: wrap; }
+  .nav-links { gap: 0; font-size: .8rem; }
+  .studio { grid-template-columns: 1fr; height: auto; }
   .panel { border-right: 0; border-bottom: 1px solid var(--border); }
-  .stage-wrap { min-height: 55vh; }
+  .stage-wrap { grid-row: 1; height: 45dvh; min-height: 280px; }
 }
 
 .tabs {
@@ -435,4 +441,12 @@ input[type="file"] {
 .preset-row button:hover {
   border-color: var(--accent);
 }
+
+.btn:disabled { opacity: .5; cursor: wait; }
+#downloadFiles { position: fixed; right: 1rem; bottom: 1rem; z-index: 20; max-width: min(420px, calc(100vw - 2rem)); padding: .8rem; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); box-shadow: var(--shadow); font-size: .85rem; }
+#downloadFiles button { float: right; margin-left: 1rem; background: var(--bg-soft); border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
+#downloadFiles a { display: block; color: var(--accent-2); text-decoration: underline; overflow-wrap: anywhere; margin-top: .6rem; }
+#modularControls .tips { font-size: .9rem; line-height: 1.65; }
+#modularControls .row .field { min-width: 0; }
+#modularControls input[type=color] { min-height: 44px; width: 100%; }
 

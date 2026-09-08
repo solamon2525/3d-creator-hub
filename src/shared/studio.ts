@@ -308,24 +308,34 @@ export function captureCoverPng(
   basename: string,
   opts: { width?: number; height?: number } = {},
 ) {
+  const bytes = createCoverPng(viewer, opts);
+  downloadBlob(new Blob([new Uint8Array(bytes)], { type: 'image/png' }), `${basename}-cover.png`);
+}
+
+export function createCoverPng(
+  viewer: StudioViewer,
+  opts: { width?: number; height?: number } = {},
+): Uint8Array {
   const width = opts.width ?? 1280;
   const height = opts.height ?? 720;
   const { renderer, scene, camera, controls } = viewer;
-  const prevW = renderer.domElement.width;
-  const prevH = renderer.domElement.height;
+  const prevSize = renderer.getSize(new THREE.Vector2());
+  const prevRatio = renderer.getPixelRatio();
   const prevAspect = camera.aspect;
-  renderer.setSize(width, height, false);
-  camera.aspect = width / height;
-  camera.updateProjectionMatrix();
-  controls.update();
-  renderer.render(scene, camera);
-  const url = renderer.domElement.toDataURL('image/png');
-  renderer.setSize(prevW, prevH, false);
-  camera.aspect = prevAspect;
-  camera.updateProjectionMatrix();
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${basename}-cover.png`;
-  a.click();
+  try {
+    renderer.setPixelRatio(1);
+    renderer.setSize(width, height, false);
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
+    controls.update();
+    renderer.render(scene, camera);
+    const url = renderer.domElement.toDataURL('image/png');
+    return Uint8Array.from(atob(url.split(',')[1]!), c => c.charCodeAt(0));
+  } finally {
+    renderer.setPixelRatio(prevRatio);
+    renderer.setSize(prevSize.x, prevSize.y, false);
+    camera.aspect = prevAspect;
+    camera.updateProjectionMatrix();
+  }
 }
 

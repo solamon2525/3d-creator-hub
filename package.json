@@ -5,6 +5,7 @@
   "type": "module",
   "description": "3D Creator Hub — keycap, clicker, and mascot studios in the browser",
   "scripts": {
+    "test:modular": "node scripts/test-modular.mjs",
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",

@@ -2,6 +2,9 @@ import * as THREE from 'three';
 import {
   captureCoverPng,
   createStudioViewer,
+  createCoverPng,
+  downloadBlob,
+  disposeObject3D,
   debounce,
   downloadProjectFile,
   loadProject,
@@ -20,9 +23,12 @@ import {
   manifoldToMesh,
   mxCrossSolid,
   union,
+  getManifold,
+  type MeshArrays,
 } from '../shared/geometry/manifoldOps';
 import { MX, mxSocketRects } from '../shared/geometry/mxStem';
-import { exportParts, type ExportPart } from '../shared/export/parts';
+import { exportParts, buildStlZip, type ExportPart } from '../shared/export/parts';
+import { createModularSolids, DEFAULT_MODULAR, normalizeModular, modularParts, groundPart, MODULAR_GUIDE, type ModularSettings } from './modular';
 import { hexToRgb, filamentOptionsHtml, rgbToHex } from '../shared/units';
 import {
   processImageWizard,
@@ -36,6 +42,8 @@ type ImportMode = 'text' | 'image' | 'svg' | 'icon';
 type ColorMode = 'ams' | 'zband';
 
 type State = {
+  productMode: 'classic' | 'modular';
+  modular: ModularSettings;
   name: string;
   baseShape: BaseShape;
   bodyColor: string;
@@ -57,6 +65,8 @@ type State = {
 };
 
 const state: State = {
+  productMode: 'classic',
+  modular: {...DEFAULT_MODULAR},
   name: 'คำไผ่',
   baseShape: 'circle',
   bodyColor: '#0f172a',
@@ -77,6 +87,18 @@ const state: State = {
   exploded: false,
 };
 Object.assign(state, loadProject<Partial<State>>('clicker') ?? {});
+state.productMode = state.productMode === 'modular' ? 'modular' : 'classic';
+state.modular = normalizeModular(state.modular);
+state.name = typeof state.name === 'string' ? state.name : 'NAME';
+
+let templatePromise: Promise<MeshArrays[]> | null = null;
+function getTemplates(): Promise<MeshArrays[]> {
+  return templatePromise ??= getManifold().then(m => {
+    const solids = createModularSolids(m);
+    try { return solids.map(manifoldToMesh); }
+    finally { disposeManifold(...solids); }
+  }).catch(error => { templatePromise = null; throw error; });
+}
 
 let imageRegions: ColorRegion[] | null = null;
 let lastParts: ExportPart[] = [];
@@ -141,7 +163,21 @@ function iconRings(sizeMm: number): Ring[] {
   ];
 }
 
-async function build() {
+async function build(state: State) {
+  if (state.productMode === 'modular') {
+    const templates = await getTemplates();
+    const settings = state.modular;
+    const previewParts = modularParts(templates, settings, settings.count, settings.view);
+    const parts = modularParts(templates, settings, settings.exportSet === 'prototype' ? 1 : settings.count, 'print');
+    const group = new THREE.Group();
+    for (const p of previewParts) {
+      const c = p.colorRgb;
+      const object = meshArraysToThree(p.mesh, new THREE.Color(c[0]/255,c[1]/255,c[2]/255));
+      object.rotation.x = -Math.PI/2;
+      group.add(object);
+    }
+    return {group, parts, warnings: [] as string[]};
+  }
   const warns: string[] = [];
   const s = state.size;
   const bodyH = state.thick;
@@ -320,10 +356,21 @@ mountShell({
     <div class="studio">
       <aside class="panel">
         <h1>Clicker Studio</h1>
+        <div class="field"><label for="productMode">ชนิดงาน</label><select id="productMode"><option value="classic">Clicker เดิม</option><option value="modular">ฐานต่อสามเหลี่ยม</option></select></div>
+        <section id="modularControls" class="hidden">
+          <p class="desc">ฐานกลาง + หัวมีรูห่วง + ตัวปิดท้าย</p>
+          <div class="field"><label for="moduleCount">จำนวนฐานกลาง: <span id="moduleCountVal">1</span></label><input id="moduleCount" type="range" min="1" max="8" step="1" value="1"/></div>
+          <div class="row"><div class="field"><label for="moduleBaseColor">สีฐาน</label><input id="moduleBaseColor" type="color"/></div><div class="field"><label for="moduleHeadColor">สีหัว</label><input id="moduleHeadColor" type="color"/></div><div class="field"><label for="moduleTailColor">สีท้าย</label><input id="moduleTailColor" type="color"/></div></div>
+          <div class="field"><label for="moduleView">มุมมอง</label><select id="moduleView"><option value="assembled">ประกอบแล้ว</option><option value="exploded">แยกชิ้น</option><option value="print">จัดวางสำหรับพิมพ์</option></select></div>
+          <div class="field"><label for="moduleExportSet">ชุดส่งออก</label><select id="moduleExportSet"><option value="prototype">ต้นแบบ 3 ชิ้น</option><option value="quantity">ชุดตามจำนวนฐาน</option></select></div>
+          <p id="moduleSummary" class="hint" aria-live="polite"></p>
+          <details class="tips"><summary>ขนาดและวิธีประกอบ</summary><p>ฐาน 24 × 24 × 12.5 mm · ช่อง MX 14.1 mm · พื้นและแผ่นจับสวิตช์ 1.5 mm · รูห่วง 3.4 mm · เผื่อร่อง 0.20 mm ต่อผิว</p><p>ยกลิ้นให้สูงกว่าราง แล้วเลื่อนลงจนสุดบ่า ถอดโดยเลื่อนย้อนขึ้น</p><p>รางไม่มีตัวล็อกกันย้อนขึ้น ต้องลองพิมพ์เช็กความฝืดและแรงยึดก่อนใช้ห้อยของ</p><p>ไฟล์ส่งออกวางพื้นลงเตียงเสมอ เลือกเครื่องและวัสดุใน slicer ก่อนพิมพ์</p></details>
+        </section>
+        <section id="classicControls">
         <p class="desc">คลิกเกอร์ชื่อ · MX socket · รูป/SVG · 3MF · mm</p>
         <div class="field"><label for="importMode">โหมด</label>
           <select id="importMode"><option value="text">ข้อความ</option><option value="image">รูปภาพ</option><option value="svg">SVG</option><option value="icon">ไอคอน</option></select></div>
-        <div class="field" id="nameField"><label for="name">ชื่อ</label><input id="name" maxlength="24" value="${state.name}"/></div>
+        <div class="field" id="nameField"><label for="name">ชื่อ</label><input id="name" maxlength="24"/></div>
         <div class="field" id="fontField"><label for="fontId">ฟอนต์</label><select id="fontId">${fontSelectHtml(state.fontId)}</select></div>
         <div class="field hidden" id="fileField"><label for="file">ไฟล์</label><input id="file" type="file" accept="image/*,.svg"/></div>
         <div class="field"><label for="baseShape">รูปทรงฐาน</label>
@@ -346,14 +393,15 @@ mountShell({
         <div class="field"><label><input id="keychain" type="checkbox" ${state.keychain ? 'checked' : ''}/> พวงกุญแจ</label></div>
         <div class="field"><label for="keychainStyle">แบบห่วง</label><select id="keychainStyle"><option value="loop">Loop</option><option value="hole">Hole</option></select></div>
         <div class="field"><label><input id="exploded" type="checkbox"/> Exploded</label></div>
+        <div class="hint">ฝา nest ใน bezel · ลายเป็น mesh พิมพ์ได้</div>
+        ${IMAGE_WIZARD_HINT}
+        </section>
         <div class="actions">
           <button class="btn primary" id="export3mf">3MF + Cover</button>
           <button class="btn" id="exportStl">STL + Cover</button>
           <button class="btn" id="saveProj">บันทึก JSON</button>
           <label class="btn" style="display:inline-block;cursor:pointer">โหลด JSON<input id="loadProj" type="file" accept="application/json,.json" hidden/></label>
         </div>
-        <div class="hint">ฝา nest ใน bezel · MX socket จริง · ลายเป็น mesh พิมพ์ได้</div>
-        ${IMAGE_WIZARD_HINT}
         ${PRINT_TIPS_CLICKER}
         <div class="status" id="status">โหลด…</div>
       </aside>
@@ -366,35 +414,62 @@ const statusEl = document.querySelector<HTMLElement>('#status')!;
 const q = <T extends HTMLElement>(id: string) => document.querySelector<T>(`#${id}`)!;
 const checklist = mountPrintChecklist(() => ({
   studio: 'clicker',
+  clickerKind: state.productMode,
   colorMode: state.colorMode,
   keychain: state.keychain,
   partCount: lastParts.length,
 }));
 
+let revision = 0;
+let readyRevision = -1;
+function lockExport() {
+  q<HTMLButtonElement>('export3mf').disabled = true;
+  q<HTMLButtonElement>('exportStl').disabled = true;
+}
 async function rebuild() {
+  const currentRevision = revision;
+  const snapshot: State = {...state, modular: {...state.modular}};
+  lockExport();
   setStatus(statusEl, 'กำลังสร้าง…', 'warn');
   try {
-    const { group, parts, warnings } = await build();
+    const { group, parts, warnings } = await build(snapshot);
+    if (currentRevision !== revision) { disposeObject3D(group); return; }
     lastParts = parts;
     viewer.setRoot(group);
-    viewer.setExploded(state.exploded ? 12 : 0);
+    viewer.setExploded(snapshot.productMode === 'classic' && snapshot.exploded ? 12 : 0);
     viewer.fitToObject(2.0);
-    writeHashParams({ name: state.name, size: state.size, mode: state.importMode });
+    writeHashParams({ name: state.name, size: state.size, mode: state.importMode, product: state.productMode });
     q<HTMLSelectElement>('fontId').value = state.fontId;
     checklist?.refresh({
       studio: 'clicker',
+      clickerKind: state.productMode,
       colorMode: state.colorMode,
       keychain: state.keychain,
       partCount: parts.length,
     });
     setStatus(statusEl, warnings.length ? warnings.join(' · ') : `พร้อม · ${parts.length} ส่วน`, warnings.length ? 'warn' : 'ok');
+    readyRevision = currentRevision;
+    q<HTMLButtonElement>('export3mf').disabled = false;
+    q<HTMLButtonElement>('exportStl').disabled = false;
+    try { saveProject('clicker', state); } catch { /* Private browsing can disable storage. */ }
   } catch (e) {
+    if (currentRevision !== revision) return;
+    lastParts = [];
     setStatus(statusEl, e instanceof Error ? e.message : String(e), 'err');
   }
 }
-const rebuildDebounced = debounce(() => void rebuild(), 220);
+const scheduleBuild = debounce(() => void rebuild(), 220);
+const rebuildDebounced = () => { revision++; readyRevision=-1; lockExport(); scheduleBuild(); };
 
 function syncMode() {
+  const modular = state.productMode === 'modular';
+  q('modularControls').classList.toggle('hidden', !modular);
+  q('classicControls').classList.toggle('hidden', modular);
+  q<HTMLSelectElement>('productMode').value = state.productMode;
+  q<HTMLButtonElement>('exportStl').textContent = modular ? 'STL แยกชิ้น + Cover (ZIP)' : 'STL + Cover';
+  const n=state.modular.count;
+  q('moduleCountVal').textContent=String(n);
+  q('moduleSummary').textContent=`พรีวิว ${n+2} ชิ้น · ส่งออก ${state.modular.exportSet==='prototype' ? 3 : n+2} ชิ้น · ฐานแต่ละชิ้น 24 × 24 × 12.5 mm`;
   const texty = state.importMode === 'text';
   const filey = state.importMode === 'image' || state.importMode === 'svg';
   q('nameField').classList.toggle('hidden', !texty);
@@ -405,6 +480,23 @@ function syncMode() {
   const wiz = document.querySelector('#imageWizard');
   wiz?.classList.toggle('hidden', !filey);
 }
+
+q<HTMLSelectElement>('productMode').onchange=e=>{
+  state.productMode=(e.target as HTMLSelectElement).value==='modular'?'modular':'classic';
+  syncMode(); rebuildDebounced();
+};
+q<HTMLInputElement>('moduleCount').value=String(state.modular.count);
+q<HTMLInputElement>('moduleCount').oninput=e=>{
+  state.modular.count=Number((e.target as HTMLInputElement).value); syncMode(); rebuildDebounced();
+};
+for(const [id,key] of [['moduleBaseColor','baseColor'],['moduleHeadColor','headColor'],['moduleTailColor','tailColor']] as const) {
+  q<HTMLInputElement>(id).value=state.modular[key];
+  q<HTMLInputElement>(id).oninput=e=>{state.modular[key]=(e.target as HTMLInputElement).value;rebuildDebounced();};
+}
+q<HTMLSelectElement>('moduleView').value=state.modular.view;
+q<HTMLSelectElement>('moduleView').onchange=e=>{state.modular.view=(e.target as HTMLSelectElement).value as ModularSettings['view'];rebuildDebounced();};
+q<HTMLSelectElement>('moduleExportSet').value=state.modular.exportSet;
+q<HTMLSelectElement>('moduleExportSet').onchange=e=>{state.modular.exportSet=(e.target as HTMLSelectElement).value as ModularSettings['exportSet'];syncMode();rebuildDebounced();};
 
 function renderPaletteSwatches() {
   const host = document.querySelector('#paletteSwatches');
@@ -530,11 +622,22 @@ q<HTMLInputElement>('maxColors').oninput = (e) => {
   else rebuildDebounced();
 };
 q<HTMLButtonElement>('export3mf').onclick = () => {
-  const base = `clicker-${state.name}`;
-  exportParts(lastParts, base, '3mf');
-  captureCoverPng(viewer, base);
+  if (readyRevision !== revision || !lastParts.length) return;
+  try {
+    const base = state.productMode === 'modular' ? `modular-${state.modular.exportSet}-${lastParts.length}-parts` : `clicker-${state.name}`;
+    exportParts(lastParts, base, '3mf');
+    captureCoverPng(viewer, base);
+  } catch(e) { setStatus(statusEl,e instanceof Error?e.message:String(e),'err'); }
 };
 q<HTMLButtonElement>('exportStl').onclick = () => {
+  if (readyRevision !== revision || !lastParts.length) return;
+  if (state.productMode === 'modular') {
+    try {
+      const bytes=buildStlZip(lastParts.map(groundPart),createCoverPng(viewer),MODULAR_GUIDE);
+      downloadBlob(new Blob([new Uint8Array(bytes)],{type:'application/zip'}),`modular-${state.modular.exportSet}-${lastParts.length}-parts.zip`);
+    } catch(e) { setStatus(statusEl,e instanceof Error?e.message:String(e),'err'); }
+    return;
+  }
   const base = `clicker-${state.name}`;
   exportParts(lastParts, base, 'stl');
   captureCoverPng(viewer, base);
@@ -549,12 +652,22 @@ q<HTMLInputElement>('loadProj').onchange = async (e) => {
   try {
     const proj = await readProjectFile(file);
     if (proj.studio !== 'clicker') throw new Error(`ไฟล์นี้เป็น studio "${proj.studio}"`);
+    if (typeof proj.data !== 'object' || !proj.data || Array.isArray(proj.data)) throw new Error('ข้อมูลโปรเจกต์ไม่ถูกต้อง');
     Object.assign(state, proj.data as Partial<State>);
+    const imported=proj.data as Partial<State>;
+    state.productMode=imported.productMode==='modular'?'modular':'classic';
+    state.modular=normalizeModular(imported.modular);
     saveProject('clicker', state);
     location.reload();
   } catch (err) {
     setStatus(statusEl, err instanceof Error ? err.message : String(err), 'err');
   }
 };
+q<HTMLInputElement>('name').value=state.name;
+q<HTMLSelectElement>('importMode').value=state.importMode;
+q<HTMLSelectElement>('keychainStyle').value=state.keychainStyle;
+q<HTMLInputElement>('exploded').checked=state.exploded;
 syncMode();
-void warmFonts().then(() => rebuild());
+lockExport();
+void rebuild();
+void warmFonts().catch(()=>{});

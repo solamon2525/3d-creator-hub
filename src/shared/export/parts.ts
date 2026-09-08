@@ -11,7 +11,7 @@ export type ExportPart = {
   extruder?: number;
 };
 
-function writeBinaryStl(mesh: MeshArrays): ArrayBuffer {
+export function writeBinaryStl(mesh: MeshArrays): ArrayBuffer {
   const { vertProperties: vp, triVerts: tv, numProp } = mesh;
   const triCount = tv.length / 3;
   const buf = new ArrayBuffer(84 + triCount * 50);
@@ -55,7 +55,7 @@ function writeBinaryStl(mesh: MeshArrays): ArrayBuffer {
   return buf;
 }
 
-function meshTo3mfObjectXml(part: ExportPart, id: number): { vertices: string; triangles: string } {
+function meshTo3mfObjectXml(part: ExportPart, materialIndex: number): { vertices: string; triangles: string } {
   const { vertProperties: vp, triVerts: tv, numProp } = part.mesh;
   const vertCount = vp.length / numProp;
   const verts: string[] = [];
@@ -68,7 +68,7 @@ function meshTo3mfObjectXml(part: ExportPart, id: number): { vertices: string; t
   const tris: string[] = [];
   for (let t = 0; t < tv.length; t += 3) {
     tris.push(
-      `<triangle v1="${tv[t]}" v2="${tv[t + 1]}" v3="${tv[t + 2]}" pid="1" p1="${id - 1}" />`,
+      `<triangle v1="${tv[t]}" v2="${tv[t + 1]}" v3="${tv[t + 2]}" pid="1" p1="${materialIndex}" p2="${materialIndex}" p3="${materialIndex}" />`,
     );
   }
   return { vertices: verts.join(''), triangles: tris.join('') };
@@ -88,23 +88,28 @@ export function assignExtruders(parts: ExportPart[]): ExportPart[] {
   });
 }
 
+export function escapeXml(value: string): string {
+  return value.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]!));
+}
+
 export function build3mf(partsIn: ExportPart[]): Uint8Array {
+  if (!partsIn.length) throw new Error('ไม่มีชิ้นส่วนสำหรับ export');
   const parts = assignExtruders(partsIn);
   const basematerials = parts
     .map((p) => {
       const [r, g, b] = p.colorRgb;
       const hex = ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
-      return `<base name="${p.name}" displaycolor="#${hex}FF" />`;
+      return `<base name="${escapeXml(p.name)}" displaycolor="#${hex}FF" />`;
     })
     .join('');
 
   const resourcesObjects: string[] = [];
   const buildItems: string[] = [];
   parts.forEach((p, i) => {
-    const id = i + 1;
-    const { vertices, triangles } = meshTo3mfObjectXml(p, id);
+    const id = i + 2;
+    const { vertices, triangles } = meshTo3mfObjectXml(p, i);
     resourcesObjects.push(`
-      <object id="${id}" type="model" name="${p.name}">
+      <object id="${id}" type="model" name="${escapeXml(p.name)}">
         <mesh>
           <vertices>${vertices}</vertices>
           <triangles>${triangles}</triangles>
@@ -127,20 +132,8 @@ export function build3mf(partsIn: ExportPart[]): Uint8Array {
   </build>
 </model>`;
 
-  // Bambu-style extruder hints
-  const colorMap = parts
-    .map((p) => `    <part id="${p.name}" extruder="${p.extruder ?? 1}" />`)
-    .join('\n');
-  const bambuConfig = `<?xml version="1.0" encoding="UTF-8"?>
-<config>
-  <object id="1">
-${colorMap}
-  </object>
-</config>`;
-
   const files: Record<string, Uint8Array> = {
     '3D/3dmodel.model': strToU8(model),
-    'Metadata/model_settings.config': strToU8(bambuConfig),
     '[Content_Types].xml': strToU8(`<?xml version="1.0" encoding="UTF-8"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
@@ -154,6 +147,15 @@ ${colorMap}
 </Relationships>`),
   };
 
+  return zipSync(files);
+}
+
+export function buildStlZip(parts: ExportPart[], cover: Uint8Array, instructions: string): Uint8Array {
+  const files: Record<string, Uint8Array> = { 'cover.png': cover, 'README.txt': strToU8(instructions) };
+  for (const [i,p] of parts.entries()) {
+    const safe = p.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+    files[`${String(i+1).padStart(2,'0')}_${safe}.stl`] = new Uint8Array(writeBinaryStl(p.mesh));
+  }
   return zipSync(files);
 }
 
