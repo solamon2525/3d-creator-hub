@@ -11,6 +11,7 @@ Run `pnpm test:modular` for the actual TypeScript geometry and shared export mod
 - Prototype and quantity exports: 3 and N+2 objects respectively; millimeters, unique resource IDs, correct material/color references, ground at Z=0, separated bed footprints.
 - Reconstructed 3MF meshes remain closed single solids; STL ZIP file counts and binary STL lengths; XML escaping including Thai, ampersands and quotes.
 - Production TypeScript/Vite build.
+- Bambu Studio CLI `--info .test-output/modular-1-prototype.3mf` produced `result.json` with `return_code: 0` and `error_string: "Success."`. This checks CLI acceptance, not sliced layers or physical printing.
 
 ## Browser checks
 
@@ -24,9 +25,13 @@ Run `pnpm test:modular` for the actual TypeScript geometry and shared export mod
 
 - Browser JSON and image/SVG upload tests: Chrome extension refused file access. Requires its “Allow access to file URLs” option. No browser security settings were changed.
 - Downloaded files on the user's disk were not independently located/reopened; binary exports were validated through the automated harness instead.
-- Installed Bambu Studio CLI returned no diagnostic output for `--info`, so slicer import is not counted as passed.
+- Slicer visual inspection and slicing were not performed.
 - Physical prints, switch retention, friction and pull-out force remain untested. The rail has no anti-lift latch. Dimensions are designed values, not measurements from the referenced video.
 
 ## Printing
 
 Use scale 100%, millimeters, floor on bed. Check overhangs beneath the rail and MX opening. Start with a 0.4 mm nozzle, 0.16 mm layers, four walls and 20–30% infill; select the actual printer/material profile in the slicer. Print the three-piece prototype before a long chain. Slide male rails downward to the shoulder; slide upward to remove, without prying sideways.
+
+## Deployment verification
+
+GitHub Pages run 34173275578 succeeded for feature commit a0be522. The live Clicker page opens and builds its default classic model. Deployed JavaScript and Manifold WASM return HTTP 200 (WASM 541470 bytes). Live modular interaction verification was interrupted when Chrome reported another extension UI blocking automation; local modular interaction checks above passed.
