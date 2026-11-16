@@ -73,6 +73,8 @@ export interface StudioViewer {
   root: THREE.Group;
   setRoot(object: THREE.Object3D): void;
   setExploded(gapMm: number): void;
+  setExplodedZ(gapMm: number): void;
+  setClipping(axis: 'x' | 'y' | 'z' | null, position: number): void;
   fitToObject(padding?: number): void;
   dispose(): void;
 }
@@ -87,7 +89,12 @@ export function createStudioViewer(container: HTMLElement): StudioViewer {
 
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.localClippingEnabled = true;
   container.appendChild(renderer.domElement);
+
+  const clipPlaneX = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 0);
+  const clipPlaneY = new THREE.Plane(new THREE.Vector3(0, -1, 0), 0);
+  const clipPlaneZ = new THREE.Plane(new THREE.Vector3(0, 0, -1), 0);
 
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
@@ -150,6 +157,28 @@ export function createStudioViewer(container: HTMLElement): StudioViewer {
         const base = basePositions.get(c) ?? c.position;
         c.position.set(base.x + i * gapMm, base.y, base.z);
       });
+    },
+    setExplodedZ(gapMm) {
+      if (!current) return;
+      current.children.forEach((c, i) => {
+        const base = basePositions.get(c) ?? c.position;
+        // Elevate parts vertically in Y axis (Three.js world up is +Y)
+        c.position.set(base.x, base.y + i * gapMm, base.z);
+      });
+    },
+    setClipping(axis, position) {
+      let plane: THREE.Plane | null = null;
+      if (axis === 'x') {
+        clipPlaneX.constant = position;
+        plane = clipPlaneX;
+      } else if (axis === 'y') {
+        clipPlaneY.constant = position;
+        plane = clipPlaneY;
+      } else if (axis === 'z') {
+        clipPlaneZ.constant = position;
+        plane = clipPlaneZ;
+      }
+      renderer.clippingPlanes = plane ? [plane] : [];
     },
     fitToObject(padding = 1.6) {
       if (!current) return;

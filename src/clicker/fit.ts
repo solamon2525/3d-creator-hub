@@ -1,10 +1,6 @@
 import type { ExportPart } from '../shared/export/parts';
-import { MX, mxCrossRects, mxSocketRects } from '../shared/geometry/mxStem.ts';
-
-export type MeshArrays = {
-  vertProperties: Float32Array;
-  triVerts: Uint32Array;
-};
+import type { MeshArrays } from '../shared/geometry/manifoldOps';
+import { MX, mxCrossRects } from '../shared/geometry/mxStem';
 
 export interface FitSettings {
   stemFit: number;     // Cross stem tolerance offset (-0.15 to +0.15 mm)
@@ -69,9 +65,11 @@ export async function createFitTestStripSolids(m: any): Promise<ExportPart[]> {
     combined = merged;
   }
 
+  const raw = combined.getMesh();
   const mesh: MeshArrays = {
-    vertProperties: new Float32Array(combined.getMesh().vertProperties),
-    triVerts: new Uint32Array(combined.getMesh().triVerts),
+    vertProperties: new Float32Array(raw.vertProperties),
+    triVerts: new Uint32Array(raw.triVerts),
+    numProp: raw.numProp || 3,
   };
   combined.delete();
 
@@ -79,8 +77,7 @@ export async function createFitTestStripSolids(m: any): Promise<ExportPart[]> {
     name: 'fit-test-strip',
     mesh,
     colorRgb: [56, 189, 248], // Sky cyan
-    colorHex: '#38bdf8',
-    plateNumber: 1,
+    extruder: 1,
   };
 
   return [part];
