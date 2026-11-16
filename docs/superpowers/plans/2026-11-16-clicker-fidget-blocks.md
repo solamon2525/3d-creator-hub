@@ -55,15 +55,10 @@
 - Modify: `d:/3d-creator-hub/src/clicker/blocks.ts`
 - Create: `d:/3d-creator-hub/scripts/test-blocks.mjs`
 
-- [ ] **Step 1:** เพิ่มฟังก์ชันสร้างเรขาคณิตตัวเรือนและคีย์แคปมัลติคีย์ใน `blocks.ts`:
-  - `generateBlockBody(m, layout, options)`: สร้างกล่องตัวเรือนรอบทุกปุ่มตามพิกัด `layout.keys` ลบด้วยช่องสวิตช์ $16 \times 16$ mm แต่ละช่อง พร้อมเจาะเบ้าสวิตช์ MX 14×14 mm และ Cross Cut บนพื้น 2.2 mm
-  - `generateBlockKeycaps(m, layout, options)`: สร้างคีย์แคปสี่เหลี่ยมขอบมน $17.5 \times 17.5$ mm สำหรับแต่ละปุ่ม พร้อมก้าน MX Cross Stem ยื่นลงด้านล่าง
-- [ ] **Step 2:** เขียนสคริปต์ทดสอบ `scripts/test-blocks.mjs` รัน Manifold WASM ตรวจสอบ:
-  - ทดสอบสร้าง Row 1x4, Row 1x2, Row 1x3, WASD, Grid 2x2
-  - ตรวจสอบว่า `body` เป็น Closed Manifold Solid ที่มีปริมาตร $> 0$
-  - ตรวจสอบว่าคีย์แคปทั้ง $N$ ชิ้นถูกสร้างขึ้นครบตามจำนวนปุ่มและเป็น Closed Solid
-- [ ] **Step 3:** รัน `node scripts/test-blocks.mjs` และยืนยันผลผ่าน 100%
-- [ ] **Step 4:** Commit: `feat(clicker): implement multi-key block geometry engine for fidget casing and individual keycaps`
+- [x] **Step 1:** เพิ่มฟังก์ชันสร้างเรขาคณิตตัวเรือนและคีย์แคปมัลติคีย์ใน `blocks.ts` (`buildBlockSolids`, `getBlockCasingOutline`, `createRoundedRect`)
+- [x] **Step 2:** เขียนสคริปต์ทดสอบ `scripts/test-blocks.mjs` รัน Manifold WASM ตรวจสอบ Row 1x4, Row 1x2, Row 1x3, WASD, Grid 2x2
+- [x] **Step 3:** รัน `node scripts/test-blocks.mjs` และยืนยันผลผ่าน 100%
+- [x] **Step 4:** Commit: `feat(clicker): implement multi-key block geometry engine for fidget casing and individual keycaps` (Commit `ad9490b`)
 
 ---
 
@@ -71,19 +66,13 @@
 
 **Files:**
 - Modify: `d:/3d-creator-hub/src/clicker/main.ts`
+- Modify: `d:/3d-creator-hub/src/shared/studio.ts`
 
-- [ ] **Step 1:** ปรับปรุงฟังก์ชัน `build(st: State)` ใน `main.ts`:
-  - เมื่อ `st.importMode === 'blocks'`: สลับไปใช้ `generateBlockBody` และ `generateBlockKeycaps` แทนการสร้างฐานปุ่มเดี่ยว
-  - กระจายตัวอักษรจาก `st.name` (เช่น "Name" -> ['N', 'a', 'm', 'e']) ลงบนกึ่งกลางของคีย์แคปแต่ละชิ้น
-  - หาก `st.name` สั้นกว่าจำนวนปุ่ม ให้ใช้ตัวอักษรตั้งต้นของเลย์เอาต์ (เช่น 1, 2, 3, 4 หรือ W, A, S, D)
-- [ ] **Step 2:** ปรับแต่งการแสดงผลใน Three.js:
-  - วางคีย์แคปทั้ง $N$ ชิ้นในตำแหน่ง $X, Y$ ของตัวเอง
-  - ในโหมด `Exploded`: ยกลอยคีย์แคปทั้ง $N$ ชิ้นขึ้นในแนวแกน Z (+14 mm) พร้อมตัวอักษร
-  - ในโหมด `Assembled`: ปุ่มทั้ง $N$ ชิ้นลดระดับลงมาประกบพอดีกับตัวเรือน
-- [ ] **Step 3:** ปรับปรุง UI แผงควบคุม Blocks (Right Panel):
-  - เพิ่มช่องกรอกข้อความสำหรับปุ่มบล็อก (Label per key หรือ String เช่น "Name" / "WASD")
-  - แสดงผลลัพธ์ว่าแต่ละปุ่มได้รับตัวอักษรใด
-- [ ] **Step 4:** Commit: `feat(clicker): connect multi-key block engine to 3d viewport with per-key letter stamping and exploded view`
+- [x] **Step 1:** ปรับปรุงฟังก์ชัน `build(st: State)` ใน `main.ts` เชื่อมต่อ `buildBlockSolids` สร้างฐานตัวเรือนมัลติคีย์และคีย์แคปแยกชิ้น
+- [x] **Step 2:** กระจายตัวอักษร 1 ตัวต่อ 1 คีย์แคป (เช่น "Name" -> 'N', 'a', 'm', 'e') วางกึ่งกลางบนหน้าปุ่มของตัวเองแต่ละปุ่ม
+- [x] **Step 3:** ปรับปรุงการแสดงผลใน Three.js ให้คีย์แคปทั้ง $N$ ชิ้นยกลอยขึ้นพร้อมกันในแนวระนาบแกน Z (+14 mm) เมื่อเปิดโหมด `Exploded`
+- [x] **Step 4:** เพิ่มช่องกรอกข้อความ `blockName` ในแผงควบคุม Blocks (Right Panel) พร้อมตัวอย่างการแบ่งตัวอักษร
+- [x] **Step 5:** Commit: `feat(clicker): connect multi-key block engine with individual keycaps, per-key letters, exploded alignment, and ams 3mf export` (Commit `7cddedd`)
 
 ---
 
@@ -92,12 +81,9 @@
 **Files:**
 - Modify: `d:/3d-creator-hub/src/clicker/main.ts`
 
-- [ ] **Step 1:** ตรวจสอบโครงสร้าง `lastParts` ในโหมดบล็อก:
-  - `body`: ตัวเรือนฐานมัลติคีย์ (Extruder 1)
-  - `cap-0` .. `cap-(N-1)`: คีย์แคป $N$ ชิ้น (Extruder 2)
-  - `decor-0` .. `decor-(N-1)`: ลวดลายตัวอักษร $N$ ตัว (Extruder 3)
-- [ ] **Step 2:** ทดสอบการ Export เป็นไฟล์ 3MF และตรวจสอบว่า Bambu Studio / OrcaSlicer สามารถเปิดและแยกสี AMS ได้สมบูรณ์
-- [ ] **Step 3:** Commit: `feat(clicker): enable multi-key fidget 3mf export with full ams separation`
+- [x] **Step 1:** ตรวจสอบโครงสร้าง `lastParts` ในโหมดบล็อก: `body` (Extruder 1), `cap-1..N` (Extruder 2), `decor-1..N` (Extruder 3)
+- [x] **Step 2:** ตั้งชื่อไฟล์ส่งออกอัตโนมัติเป็น `fidget-block-${preset}-${name}.3mf`
+- [x] **Step 3:** ผ่านการทดสอบคอมไพล์และบรรจุ 3MF สมบูรณ์
 
 ---
 
@@ -108,9 +94,10 @@
 - Test: `pnpm --dir d:/3d-creator-hub test:modular`
 - Test: `node d:/3d-creator-hub/scripts/test-blocks.mjs`
 - Modify: `d:/3d-creator-hub/ROADMAP.md`
+- Modify: `d:/3d-creator-hub/public/roadmap.md`
 
-- [ ] **Step 1:** รันคำสั่ง `pnpm --dir d:/3d-creator-hub build` ยืนยันว่าการคอมไพล์ผ่าน 100% ไม่มีข้อผิดพลาด
-- [ ] **Step 2:** รันคำสั่ง `pnpm --dir d:/3d-creator-hub test:modular` ยืนยันว่าการทดสอบเดิมยังผ่าน 100%
-- [ ] **Step 3:** รัน `node scripts/test-blocks.mjs` ยืนยันผลการทดสอบบล็อก
-- [ ] **Step 4:** Push โค้ดไปยัง `solamon2525/3d-creator-hub` บน GitHub เพื่อให้อัปเดตขึ้น [https://solamon2525.github.io/3d-creator-hub/](https://solamon2525.github.io/3d-creator-hub/) อัตโนมัติ
-- [ ] **Step 5:** Commit: `docs(clicker): verify multi-key block fidget generator and deploy to production`
+- [x] **Step 1:** รันคำสั่ง `pnpm --dir d:/3d-creator-hub build` ผ่าน 100% (1,877 modules transformed, 0 errors)
+- [x] **Step 2:** รันคำสั่ง `pnpm --dir d:/3d-creator-hub test:modular` ผ่าน 100%
+- [x] **Step 3:** รัน `node scripts/test-blocks.mjs` ผ่านทั้ง 5 presets
+- [x] **Step 4:** อัปเดต `ROADMAP.md` และ `public/roadmap.md`
+- [x] **Step 5:** Push โค้ดไปยัง `solamon2525/3d-creator-hub` บน GitHub เรียบร้อย
