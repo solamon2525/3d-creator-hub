@@ -1,6 +1,6 @@
 import type { ExportPart } from '../shared/export/parts';
 import type { MeshArrays } from '../shared/geometry/manifoldOps';
-import { MX, mxCrossRects } from '../shared/geometry/mxStem';
+import { MX, mxCrossRects } from '../shared/geometry/mxStem.ts';
 
 export interface FitSettings {
   stemFit: number;     // Cross stem tolerance offset (-0.15 to +0.15 mm)
