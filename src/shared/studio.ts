@@ -162,8 +162,9 @@ export function createStudioViewer(container: HTMLElement): StudioViewer {
       if (!current) return;
       current.children.forEach((c, i) => {
         const base = basePositions.get(c) ?? c.position;
+        const groupIndex = typeof c.userData.explodeGroup === 'number' ? c.userData.explodeGroup : i;
         // Elevate parts vertically in Y axis (Three.js world up is +Y)
-        c.position.set(base.x, base.y + i * gapMm, base.z);
+        c.position.set(base.x, base.y + groupIndex * gapMm, base.z);
       });
     },
     setClipping(axis, position) {

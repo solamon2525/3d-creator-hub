@@ -27,7 +27,7 @@ Live: https://solamon2525.github.io/3d-creator-hub/
 | Fit & Tolerance Calibration + Fit Test Strip (3MF) | ✅ | ปรับระยะก้าน/เบ้าสวิตช์ พร้อมปุ่ม 1-คลิกสร้างแผ่นทดสอบ 5 สเต็ป |
 | Three.js Section View ("Cut it open") | ✅ | ผ่าตรวจโมเดลแกน X/Y/Z ด้วย Clipping Planes + สลับ Assembled / Exploded |
 | Lucide Icons Library (2,000+ ไอคอน) | ✅ | หมวด Gaming, Popular, Nature, Tech, Tools พร้อมระบบค้นหา |
-| Multi-line Text & Fidget Blocks (WASD/Row/Grid) | ✅ | พิมพ์ข้อความหลายบรรทัด และคลัสเตอร์ปุ่มคีย์บอร์ดกดเล่น |
+| Multi-line Text & Fidget Blocks (WASD/Row/Grid) | ✅ | ตัวเรือนฐานมัลติช่อง พร้อมเบ้า MX และคีย์แคปแยกชิ้น 1 ตัวอักษรต่อ 1 ปุ่ม |
 | Keycap stabilizer 2u+ | ✅ | ช่อง stab ระยะ Cherry ~±11.9 mm (เปิด/ปิดได้) |
 | Image wizard (contrast / brightness / knockout) | ✅ | Clicker + Mascot relief |
 | บันทึก/โหลดโปรเจกต์เป็นไฟล์ JSON | ✅ | `3dch-<studio>.json` + localStorage |

@@ -39,7 +39,7 @@ import { mountPrintChecklist, PRINT_TIPS_CLICKER } from '../shared/ui/presets';
 import { createBaseOutline, SHAPE_LABELS, type BaseShape } from './shapes';
 import { DEFAULT_FIT, normalizeFit, createFitTestStripSolids, type FitSettings } from './fit';
 import { ICON_CATEGORIES, getIconSvg, searchIcons } from './iconCatalog';
-import { BLOCK_PRESETS, type BlockPreset } from './blocks';
+import { BLOCK_PRESETS, buildBlockSolids, type BlockPreset } from './blocks';
 
 type ImportMode = 'text' | 'icon' | 'image' | 'svg' | 'blocks';
 type ColorMode = 'ams' | 'zband';
@@ -169,6 +169,113 @@ async function build(st: State) {
       group.add(object);
     }
     return { group, parts, warnings: [] as string[] };
+  }
+
+  // Multi-key Fidget Blocks Mode (Row 1x2, 1x3, 1x4, WASD, Grid 2x2)
+  if (st.importMode === 'blocks') {
+    const warns: string[] = [];
+    const layout = BLOCK_PRESETS[st.blockPreset]?.layout() ?? BLOCK_PRESETS.row4.layout();
+    warns.push(`โหมด Fidget Blocks: ${layout.name} (${layout.keys.length} ปุ่ม)`);
+    const m = await getManifold();
+    const { body: blockBody, caps: blockCaps } = buildBlockSolids(m, layout, {
+      bodyH: st.thick,
+      floor: 2.4,
+      stemFit: st.fit.stemFit,
+      pocketFit: st.fit.pocketFit,
+    });
+
+    const bodyMesh = manifoldToMesh(blockBody);
+    disposeManifold(blockBody);
+
+    const parts: ExportPart[] = [
+      { name: 'body', mesh: bodyMesh, colorRgb: hexToRgb(st.bodyColor), extruder: 1 },
+    ];
+
+    const group = new THREE.Group();
+    const bodyThree = meshArraysToThree(
+      bodyMesh,
+      new THREE.Color(
+        hexToRgb(st.bodyColor)[0] / 255,
+        hexToRgb(st.bodyColor)[1] / 255,
+        hexToRgb(st.bodyColor)[2] / 255,
+      ),
+    );
+    bodyThree.rotation.x = -Math.PI / 2;
+    bodyThree.userData.explodeGroup = 0;
+    group.add(bodyThree);
+
+    // Keycaps
+    for (let i = 0; i < blockCaps.length; i++) {
+      const c = blockCaps[i]!;
+      const capMesh = manifoldToMesh(c.solid);
+      disposeManifold(c.solid);
+      const name = `cap-${i + 1}`;
+      parts.push({
+        name,
+        mesh: capMesh,
+        colorRgb: hexToRgb(st.capColor),
+        extruder: 2,
+      });
+
+      const capThree = meshArraysToThree(
+        capMesh,
+        new THREE.Color(
+          hexToRgb(st.capColor)[0] / 255,
+          hexToRgb(st.capColor)[1] / 255,
+          hexToRgb(st.capColor)[2] / 255,
+        ),
+      );
+      capThree.rotation.x = -Math.PI / 2;
+      capThree.userData.explodeGroup = 1;
+      group.add(capThree);
+    }
+
+    // Characters distribution (1 character per keycap)
+    const textChars = Array.from(st.name.trim() || 'Name');
+    const { font } = await loadFontForText(st.fontId, st.name || '1');
+
+    for (let i = 0; i < blockCaps.length; i++) {
+      const c = blockCaps[i]!;
+      const char = textChars[i] || c.key.label || String(i + 1);
+      try {
+        const contours = textToContours(font, char, Math.min(st.letterSize, 9.5));
+        if (contours.rings.length) {
+          const placedRings: Ring[] = contours.rings.map((ring) =>
+            ring.map(([x, y]) => [x + c.center[0], y + c.center[1]] as [number, number]),
+          );
+          const bandDepth = Math.max(0.6, st.letterDepth);
+          const z0 = c.topZ + 0.15;
+          const solid = await extrudeRings(placedRings, bandDepth, false);
+          const placed = solid.translate([0, 0, z0]);
+          const mesh = manifoldToMesh(placed);
+          disposeManifold(solid, placed);
+          const name = `decor-${i + 1}`;
+          parts.push({
+            name,
+            mesh,
+            colorRgb: hexToRgb(st.textColor),
+            extruder: 3,
+          });
+
+          const decThree = meshArraysToThree(
+            mesh,
+            new THREE.Color(
+              hexToRgb(st.textColor)[0] / 255,
+              hexToRgb(st.textColor)[1] / 255,
+              hexToRgb(st.textColor)[2] / 255,
+            ),
+            { raised: true },
+          );
+          decThree.rotation.x = -Math.PI / 2;
+          decThree.userData.explodeGroup = 1;
+          group.add(decThree);
+        }
+      } catch (err) {
+        // Glyph fallback ignore
+      }
+    }
+
+    return { group, parts, warnings: warns };
   }
 
   const warns: string[] = [];
@@ -305,17 +412,6 @@ async function build(st: State) {
       if (svg) {
         regions = await svgTextToRegions(svg, st.letterSize * 1.5, st.maxColors);
       }
-    } else if (st.importMode === 'blocks') {
-      const blockDef = BLOCK_PRESETS[st.blockPreset]?.layout() ?? BLOCK_PRESETS.single.layout();
-      warns.push(`โหมด Fidget: ${blockDef.name} (${blockDef.keys.length} ปุ่ม)`);
-      const { font } = await loadFontForText('sarabun', '1');
-      const allRings: Ring[] = [];
-      for (const k of blockDef.keys) {
-        const c = textToContours(font, k.label, Math.min(st.letterSize, 10));
-        const shifted = c.rings.map((r) => r.map(([x, y]) => [x + k.x, y + k.y] as [number, number]));
-        allRings.push(...shifted);
-      }
-      regions = [{ rgb: hexToRgb(st.textColor), rings: allRings, coverage: 1 }];
     } else if (imageRegions?.length) {
       regions = imageRegions;
     } else if (st.importMode === 'image' || st.importMode === 'svg') {
@@ -361,6 +457,7 @@ async function build(st: State) {
       { raised },
     );
     mesh.rotation.x = -Math.PI / 2;
+    mesh.userData.explodeGroup = p.name === 'body' ? 0 : 1;
     group.add(mesh);
   }
   return { group, parts, warnings: warns };
@@ -591,6 +688,11 @@ mountShell({
                 .map(([id, p]) => `<option value="${id}">${p.name}</option>`)
                 .join('')}
             </select>
+          </div>
+          <div class="field">
+            <label for="blockName">ข้อความบนปุ่ม (กระจาย 1 ตัวต่อ 1 ปุ่ม)</label>
+            <input type="text" id="blockName" value="${state.name}" placeholder="เช่น Name, WASD, 1234, คำไผ่" style="width:100%;box-sizing:border-box;padding:0.4rem;border-radius:8px;border:1px solid var(--border);background:var(--bg-soft);color:var(--text);font-family:inherit"/>
+            <span class="hint" id="blockHint" style="display:block;margin-top:0.35rem">ตัวอย่าง: "Name" ➔ ปุ่ม 1: N, ปุ่ม 2: a, ปุ่ม 3: m, ปุ่ม 4: e</span>
           </div>
         </section>
 
@@ -908,6 +1010,12 @@ q<HTMLSelectElement>('colorMode').onchange = (e) => {
 };
 q<HTMLTextAreaElement>('name').oninput = (e) => {
   state.name = (e.target as HTMLTextAreaElement).value || 'คำไผ่';
+  q<HTMLInputElement>('blockName').value = state.name;
+  rebuildDebounced();
+};
+q<HTMLInputElement>('blockName').oninput = (e) => {
+  state.name = (e.target as HTMLInputElement).value || 'Name';
+  q<HTMLTextAreaElement>('name').value = state.name;
   rebuildDebounced();
 };
 q<HTMLSelectElement>('fontId').onchange = (e) => {
@@ -1029,6 +1137,8 @@ q<HTMLButtonElement>('export3mf').onclick = () => {
     const base =
       state.productMode === 'modular'
         ? `modular-${state.modular.exportSet}-${lastParts.length}-parts`
+        : state.importMode === 'blocks'
+        ? `fidget-block-${state.blockPreset}-${state.name.replace(/\s+/g, '_')}`
         : `clicker-${state.baseShape}-${state.name.replace(/\s+/g, '_')}`;
     exportParts(lastParts, base, '3mf');
     captureCoverPng(viewer, base);
@@ -1050,7 +1160,10 @@ q<HTMLButtonElement>('exportStl').onclick = () => {
     }
     return;
   }
-  const base = `clicker-${state.baseShape}-${state.name.replace(/\s+/g, '_')}`;
+  const base =
+    state.importMode === 'blocks'
+      ? `fidget-block-${state.blockPreset}-${state.name.replace(/\s+/g, '_')}`
+      : `clicker-${state.baseShape}-${state.name.replace(/\s+/g, '_')}`;
   exportParts(lastParts, base, 'stl');
   captureCoverPng(viewer, base);
 };
