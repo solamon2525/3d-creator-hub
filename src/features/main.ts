@@ -68,17 +68,18 @@ mountShell({
           <li>ส่งออกต้นแบบ 3 ชิ้น หรือชุด N+2 ชิ้น: 3MF แยกวัตถุบนเตียง หรือ ZIP ที่มี STL แยกชิ้น + Cover + คู่มือ</li>
           <li>เลื่อนลิ้นลงตามรางจนสุดบ่า รางไม่มีล็อกกันย้อนขึ้น ผ่านการตรวจดิจิทัล แต่ต้องทดลองพิมพ์เพื่อยืนยันความฝืดและแรงยึด</li>
         </ul>
-        <h3>Clicker เดิม</h3>
-        <p class="feat-lead">คลิกเกอร์ชื่อ / โลโก้ แบบ fidget ใส่ MX switch</p>
+        <h3>Clicker Generator (MakerWorld Parity v1.0.8)</h3>
+        <p class="feat-lead">คลิกเกอร์ชื่อ / โลโก้ / สวิตช์กลไก MX สไตล์ MakerWorld แบบ 3-Zone Layout</p>
         <ul class="feat-list">
-          <li>ตัวเครื่อง + ฝา nest · <strong>MX socket จริง</strong></li>
-          <li>โหมดลาย: ข้อความ · รูปภาพ · SVG · ไอคอน</li>
-          <li>ชื่อไทยนูนเป็น mesh (opentype)</li>
-          <li>ฐาน: วงกลม · สี่เหลี่ยม · หกเหลี่ยม · หัวใจ · ดาว</li>
-          <li>รูป → quantize สี → regions นูนหลายสี</li>
-          <li>พวงกุญแจแบบ loop / เจาะ hole</li>
-          <li>สีหลายชั้น: <strong>AMS</strong> หรือ <strong>No-AMS Z-band + pause</strong></li>
-          <li>Image wizard + Checklist พิมพ์ (สลับ AMS / Z-band pause ตามโหมด)</li>
+          <li><strong>โครงสร้าง 3-Zone Layout:</strong> แถบควบคุมซ้าย (Shape/Body/Colors/Fit/Loop) · กลาง (3D Viewport) · แถบควบคุมขวา (Decoration & Export)</li>
+          <li><strong>14 รูปทรงฐานขั้นสูง:</strong> Circle, Square, Rectangle, Squircle, Capsule, Polygon, Star, Heart, Egg, Cross, Shield, Tag, Arch, Outline พร้อม Turn หมุนองศา 0–360° และ Lock Base Size (ปรับ W × H แยกอิสระ)</li>
+          <li><strong>ระบบ Fit & Tolerance Calibration:</strong> ปรับระยะก้านสวิตช์ MX (Stem Fit ±0.15mm), เบ้าสวิตช์ 14mm (Pocket Fit ±0.20mm), และช่องว่างขอบปุ่ม (Top/Base Gap 0.3–1.5mm)</li>
+          <li><strong>1-คลิกสร้างแผ่นทดสอบ Fit Test Strip (3MF):</strong> พิมพ์แผ่นก้านทดสอบ 5 สเต็ป (-0.10 ถึง +0.10 mm) ใน 8 นาทีเพื่อเลือกระดับที่เสียบสวิตช์แน่นพอดี</li>
+          <li><strong>เครื่องมือผ่าตรวจโมเดล "Cut it open":</strong> ผ่าตรวจโครงสร้างสลักล็อกภายในด้วย Clipping Planes (แกน X, Y, Z พร้อม Slider) และมุมมอง Assembled vs Exploded</li>
+          <li><strong>คลังไอคอน Lucide (2,000+ ไอคอน):</strong> ประทับลายนูนบนปุ่มในคลิกเดียว จัดหมวดหมู่ Gaming, Popular, Nature, Tech, Tools พร้อมช่องค้นหา</li>
+          <li><strong>ข้อความหลายบรรทัด & Fidget Blocks:</strong> รองรับภาษาไทย/อังกฤษหลายบรรทัด และรูปแบบคลัสเตอร์ปุ่มเกมมิ่ง WASD, แถวยาว 1x2–1x4, ตาราง 2x2</li>
+          <li><strong>Image Wizard:</strong> อัปโหลดรูปภาพ ปรับ Contrast, Brightness, ลบพื้นหลังสีขาว และตั้งจำนวนสี AMS</li>
+          <li><strong>ระบบส่งออก 3MF:</strong> รองรับ Bambu Studio / OrcaSlicer จัดวางบนเพลตพร้อมระบุ Extruder slot ตามสี</li>
         </ul>
         <a class="btn" href="${withBase('clicker/')}">เปิด Clicker →</a>
       </section>

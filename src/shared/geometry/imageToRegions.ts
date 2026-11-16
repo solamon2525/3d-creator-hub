@@ -156,6 +156,10 @@ export type ImageProcessOpts = {
   knockOutWhite?: boolean;
   /** RGB channel must all be ≥ this to knock out (default 235). */
   whiteThreshold?: number;
+  /** Contrast adjustment (-50 to +50). */
+  contrast?: number;
+  /** Brightness adjustment (-50 to +50). */
+  brightness?: number;
 };
 
 export type ImageProcessResult = {
@@ -186,6 +190,25 @@ async function rasterizeImageFile(
   ctx.drawImage(bmp, sx, sy, sw, sh, 0, 0, w, h);
   bmp.close();
   const imageData = ctx.getImageData(0, 0, w, h);
+
+  if (opts.contrast || opts.brightness) {
+    const factor = (259 * ((opts.contrast || 0) + 255)) / (255 * (259 - (opts.contrast || 0)));
+    const bright = (opts.brightness || 0) * 2.55;
+    const px = imageData.data;
+    for (let i = 0; i < px.length; i += 4) {
+      if (px[i + 3] === 0) continue;
+      let r = px[i]! + bright;
+      let g = px[i + 1]! + bright;
+      let b = px[i + 2]! + bright;
+      r = factor * (r - 128) + 128;
+      g = factor * (g - 128) + 128;
+      b = factor * (b - 128) + 128;
+      px[i] = Math.max(0, Math.min(255, r));
+      px[i + 1] = Math.max(0, Math.min(255, g));
+      px[i + 2] = Math.max(0, Math.min(255, b));
+    }
+  }
+
   if (opts.knockOutWhite) {
     const thr = opts.whiteThreshold ?? 235;
     const px = imageData.data;
