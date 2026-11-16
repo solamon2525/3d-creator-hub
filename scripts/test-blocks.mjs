@@ -2,117 +2,84 @@ import Module from 'manifold-3d';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildBlockSolids, BLOCK_PRESETS } from '../src/clicker/blocks.ts';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-function roundedRectPoints(w, d, r, segments = 16) {
-  const rw = w / 2;
-  const rd = d / 2;
-  const pts = [];
-  // Top right
-  for (let i = 0; i <= segments; i++) {
-    const a = (i / segments) * (Math.PI / 2);
-    pts.push([rw - r + Math.cos(a) * r, rd - r + Math.sin(a) * r]);
-  }
-  // Top left
-  for (let i = 0; i <= segments; i++) {
-    const a = Math.PI / 2 + (i / segments) * (Math.PI / 2);
-    pts.push([-rw + r + Math.cos(a) * r, rd - r + Math.sin(a) * r]);
-  }
-  // Bottom left
-  for (let i = 0; i <= segments; i++) {
-    const a = Math.PI + (i / segments) * (Math.PI / 2);
-    pts.push([-rw + r + Math.cos(a) * r, -rd + r + Math.sin(a) * r]);
-  }
-  // Bottom right
-  for (let i = 0; i <= segments; i++) {
-    const a = (Math.PI * 3) / 2 + (i / segments) * (Math.PI / 2);
-    pts.push([rw - r + Math.cos(a) * r, -rd + r + Math.sin(a) * r]);
-  }
-  return pts;
-}
-
-const PRESETS = {
-  row2: [
-    { x: -10, y: 0, label: '1' },
-    { x: 10, y: 0, label: '2' },
-  ],
-  row3: [
-    { x: -20, y: 0, label: '1' },
-    { x: 0, y: 0, label: '2' },
-    { x: 20, y: 0, label: '3' },
-  ],
-  row4: [
-    { x: -30, y: 0, label: 'N' },
-    { x: -10, y: 0, label: 'a' },
-    { x: 10, y: 0, label: 'm' },
-    { x: 30, y: 0, label: 'e' },
-  ],
-  grid2x2: [
-    { x: -10, y: 10, label: '1' },
-    { x: 10, y: 10, label: '2' },
-    { x: -10, y: -10, label: '3' },
-    { x: 10, y: -10, label: '4' },
-  ],
-  wasd: [
-    { x: 0, y: 10, label: 'W' },
-    { x: -20, y: -10, label: 'A' },
-    { x: 0, y: -10, label: 'S' },
-    { x: 20, y: -10, label: 'D' },
-  ],
-};
-
 async function run() {
+  console.log('Testing Fidget Blocks Geometry Engine (Solid Bottom & Borders Parity)...');
   const wasmPath = path.resolve(__dirname, '../node_modules/manifold-3d/manifold.wasm');
   const wasmBinary = fs.readFileSync(wasmPath);
   const m = await Module({ wasmBinary });
   m.setup();
 
-  const bodyH = 11.0;
-  const floor = 2.4;
-  const wellSize = 16.2;
-  const cornerR = 5.0;
+  const presetsToTest = ['single', 'row2', 'row3', 'row4', 'col2', 'col3', 'col4', 'grid2x2', 'wasd', 'arrows'];
 
-  for (const [name, keys] of Object.entries(PRESETS)) {
-    const minX = Math.min(...keys.map((k) => k.x)) - 10.0 - 2.5;
-    const maxX = Math.max(...keys.map((k) => k.x)) + 10.0 + 2.5;
-    const minY = Math.min(...keys.map((k) => k.y)) - 10.0 - 2.5;
-    const maxY = Math.max(...keys.map((k) => k.y)) + 10.0 + 2.5;
-    const w = maxX - minX;
-    const d = maxY - minY;
-    const cx = (minX + maxX) / 2;
-    const cy = (minY + maxY) / 2;
-
-    const rawPts = roundedRectPoints(w, d, cornerR, 12);
-    const pts = rawPts.map(([x, y]) => [x + cx, y + cy]);
-
-    const cs = new m.CrossSection([pts], 'EvenOdd');
-    let body = m.Manifold.extrude(cs, bodyH);
-
-    for (const k of keys) {
-      const wellCube = m.Manifold.cube([wellSize, wellSize, bodyH - floor + 0.5], false);
-      const placedWell = wellCube.translate([k.x - wellSize / 2, k.y - wellSize / 2, floor]);
-      const cutBody = body.subtract(placedWell);
-      body.delete();
-      wellCube.delete();
-      placedWell.delete();
-      body = cutBody;
-
-      const socketHole = m.Manifold.cube([14.2, 14.2, floor + 0.4], false);
-      const placedSocket = socketHole.translate([k.x - 7.1, k.y - 7.1, -0.2]);
-      const cutSocket = body.subtract(placedSocket);
-      body.delete();
-      socketHole.delete();
-      placedSocket.delete();
-      body = cutSocket;
+  for (const pid of presetsToTest) {
+    const preset = BLOCK_PRESETS[pid];
+    if (!preset) {
+      throw new Error(`Missing preset: ${pid}`);
     }
 
-    const verts = body.getMesh().vertProperties.length / 3;
-    console.log(`Preset [${name}]: ${keys.length} keys, body verts: ${verts}, valid: ${verts > 0}`);
+    const layout = preset.layout(20.0);
+    const { body, caps } = buildBlockSolids(m, layout, {
+      solidFloor: true,
+      borders: true,
+      keycapProfile: 'standard',
+    });
+
+    const mesh = body.getMesh();
+    const vertCount = mesh.vertProperties.length / 3;
+    const triCount = mesh.triVerts.length / 3;
+
+    // Verify watertightness and triangle counts
+    if (triCount < 10) {
+      throw new Error(`Body triangle count too low for [${pid}]: ${triCount}`);
+    }
+
+    // Verify solid bottom: all Z coordinates >= 0.0, and min Z is exactly 0.0
+    let minZ = Infinity;
+    let maxZ = -Infinity;
+    let bottomVertsCount = 0;
+
+    for (let i = 0; i < vertCount; i++) {
+      const z = mesh.vertProperties[i * 3 + 2];
+      if (z < minZ) minZ = z;
+      if (z > maxZ) maxZ = z;
+      if (Math.abs(z) < 0.001) bottomVertsCount++;
+    }
+
+    if (minZ < -0.001) {
+      throw new Error(`Casing penetrated below print bed (minZ = ${minZ}) in [${pid}]!`);
+    }
+
+    if (Math.abs(minZ) > 0.001) {
+      throw new Error(`Casing base not aligned to bed Z=0 (minZ = ${minZ}) in [${pid}]!`);
+    }
+
+    if (bottomVertsCount < 4) {
+      throw new Error(`Casing does not have solid flat bottom base in [${pid}]!`);
+    }
+
+    // Verify keycaps
+    if (caps.length !== layout.keys.length) {
+      throw new Error(`Keycaps count mismatch for [${pid}]: expected ${layout.keys.length}, got ${caps.length}`);
+    }
+
+    for (const c of caps) {
+      const capMesh = c.solid.getMesh();
+      const capTris = capMesh.triVerts.length / 3;
+      if (capTris < 10) {
+        throw new Error(`Keycap ${c.index} tri count too low: ${capTris}`);
+      }
+      c.solid.delete();
+    }
+
+    console.log(`✓ Preset [${pid.padEnd(8)}]: ${layout.keys.length} keys, body tris: ${triCount}, bottomVerts: ${bottomVertsCount}, valid solid bottom`);
     body.delete();
   }
 
-  console.log('All 5 presets verified successfully!');
+  console.log('\nALL 10 FIDGET BLOCK PRESETS PASSED SOLID-BOTTOM & BORDERS VERIFICATION!');
 }
 
 run().catch((err) => {

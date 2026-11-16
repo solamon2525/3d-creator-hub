@@ -28,6 +28,7 @@ Live: https://solamon2525.github.io/3d-creator-hub/
 | Three.js Section View ("Cut it open") | ✅ | ผ่าตรวจโมเดลแกน X/Y/Z ด้วย Clipping Planes + สลับ Assembled / Exploded |
 | Lucide Icons Library (2,000+ ไอคอน) | ✅ | หมวด Gaming, Popular, Nature, Tech, Tools พร้อมระบบค้นหา |
 | Multi-line Text & Fidget Blocks (WASD/Row/Grid) | ✅ | ตัวเรือนฐานมัลติช่อง พร้อมเบ้า MX และคีย์แคปแยกชิ้น 1 ตัวอักษรต่อ 1 ปุ่ม |
+| Fidget Blocks Solid Base & Borders Parity | ✅ | พื้นล่างตันเรียบ 100% (Solid Bottom) + เบ้าสวิตช์ขั้นบันได (Stepped) + ร่อง Borders V-groove + คีย์แคป OEM Tapered + Column 1x2–1x4 |
 | Keycap stabilizer 2u+ | ✅ | ช่อง stab ระยะ Cherry ~±11.9 mm (เปิด/ปิดได้) |
 | Image wizard (contrast / brightness / knockout) | ✅ | Clicker + Mascot relief |
 | บันทึก/โหลดโปรเจกต์เป็นไฟล์ JSON | ✅ | `3dch-<studio>.json` + localStorage |

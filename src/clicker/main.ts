@@ -59,6 +59,9 @@ type State = {
   iconCategory: string;
   iconSearch: string;
   blockPreset: BlockPreset;
+  blockBorders: boolean;
+  blockSolidFloor: boolean;
+  keycapProfile: 'standard' | 'flat';
   contrast: number;
   brightness: number;
   bodyColor: string;
@@ -96,7 +99,10 @@ const state: State = {
   selectedIcon: 'Heart',
   iconCategory: 'popular',
   iconSearch: '',
-  blockPreset: 'single',
+  blockPreset: 'row4',
+  blockBorders: true,
+  blockSolidFloor: true,
+  keycapProfile: 'standard',
   contrast: 0,
   brightness: 0,
   bodyColor: '#0f172a',
@@ -179,7 +185,10 @@ async function build(st: State) {
     const m = await getManifold();
     const { body: blockBody, caps: blockCaps } = buildBlockSolids(m, layout, {
       bodyH: st.thick,
-      floor: 2.4,
+      floor: 2.0,
+      solidFloor: st.blockSolidFloor ?? true,
+      borders: st.blockBorders ?? true,
+      keycapProfile: st.keycapProfile ?? 'standard',
       stemFit: st.fit.stemFit,
       pocketFit: st.fit.pocketFit,
     });
@@ -685,8 +694,23 @@ mountShell({
             <label for="blockPreset">รูปแบบ Fidget Blocks</label>
             <select id="blockPreset">
               ${Object.entries(BLOCK_PRESETS)
-                .map(([id, p]) => `<option value="${id}">${p.name}</option>`)
+                .map(([id, p]) => `<option value="${id}" ${state.blockPreset === id ? 'selected' : ''}>${p.name}</option>`)
                 .join('')}
+            </select>
+          </div>
+          <div class="field" style="display:flex;align-items:center;gap:0.5rem;margin-top:0.4rem">
+            <input type="checkbox" id="blockBorders" ${state.blockBorders ? 'checked' : ''} style="width:16px;height:16px;accent-color:#f97316"/>
+            <label for="blockBorders" style="margin:0;cursor:pointer">เส้นขอบแบ่งปุ่ม (Borders)</label>
+          </div>
+          <div class="field" style="display:flex;align-items:center;gap:0.5rem;margin-top:0.2rem">
+            <input type="checkbox" id="blockSolidFloor" ${state.blockSolidFloor ? 'checked' : ''} style="width:16px;height:16px;accent-color:#f97316"/>
+            <label for="blockSolidFloor" style="margin:0;cursor:pointer">พื้นล่างตันเรียบ 100% (Solid Bottom)</label>
+          </div>
+          <div class="field" style="margin-top:0.4rem">
+            <label for="keycapProfile">ทรงคีย์แคป (Keycap Profile)</label>
+            <select id="keycapProfile">
+              <option value="standard" ${state.keycapProfile === 'standard' ? 'selected' : ''}>Standard (OEM Tapered สโลปสอบ)</option>
+              <option value="flat" ${state.keycapProfile === 'flat' ? 'selected' : ''}>Flat (ขอบตรงระนาบเดียว)</option>
             </select>
           </div>
           <div class="field">
@@ -1024,6 +1048,18 @@ q<HTMLSelectElement>('fontId').onchange = (e) => {
 };
 q<HTMLSelectElement>('blockPreset').onchange = (e) => {
   state.blockPreset = (e.target as HTMLSelectElement).value as BlockPreset;
+  rebuildDebounced();
+};
+q<HTMLInputElement>('blockBorders').onchange = (e) => {
+  state.blockBorders = (e.target as HTMLInputElement).checked;
+  rebuildDebounced();
+};
+q<HTMLInputElement>('blockSolidFloor').onchange = (e) => {
+  state.blockSolidFloor = (e.target as HTMLInputElement).checked;
+  rebuildDebounced();
+};
+q<HTMLSelectElement>('keycapProfile').onchange = (e) => {
+  state.keycapProfile = (e.target as HTMLSelectElement).value as 'standard' | 'flat';
   rebuildDebounced();
 };
 q<HTMLInputElement>('keychain').onchange = (e) => {

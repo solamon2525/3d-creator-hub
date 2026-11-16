@@ -58,6 +58,10 @@ const ITEMS: Record<StudioId, Item[]> = {
       label: 'ทิศ: พิมพ์ตั้ง (ฝาขึ้น) · bezel มักไม่ต้อง support',
     },
     {
+      id: 'solid-bottom',
+      label: 'ฐานบล็อก: พื้นล่างตันเรียบ 100% วางระนาบเตาพิมพ์ได้ทันทีโดยไม่ต้องเปิด Support ใต้ฐาน',
+    },
+    {
       id: 'ams',
       label: 'AMS: หลายสีในไฟล์ 3MF เดียว — แม็ปเส้นตามชิ้นส่วน',
       when: (c) => (c.colorMode ?? 'ams') === 'ams',
