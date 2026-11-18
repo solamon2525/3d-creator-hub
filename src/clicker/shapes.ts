@@ -46,8 +46,10 @@ export const SHAPE_LABELS: Record<BaseShape, string> = {
 
 export function createBaseOutline(kind: BaseShape, options: ShapeOptions): Ring {
   const size = options.size || 32;
-  const w = options.lockBaseSize && options.baseWidth ? options.baseWidth : size;
-  const h = options.lockBaseSize && options.baseHeight ? options.baseHeight : size;
+  const defaultW = kind === 'rectangle' ? Math.round(size * 1.35) : size;
+  const defaultH = size;
+  const w = options.lockBaseSize && options.baseWidth ? options.baseWidth : defaultW;
+  const h = options.lockBaseSize && options.baseHeight ? options.baseHeight : defaultH;
   const rx = w / 2;
   const ry = h / 2;
 

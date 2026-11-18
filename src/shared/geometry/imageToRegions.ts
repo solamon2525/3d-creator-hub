@@ -168,58 +168,131 @@ export type ImageProcessResult = {
   previewUrl: string;
 };
 
+interface DrawableSource {
+  source: CanvasImageSource;
+  width: number;
+  height: number;
+  close: () => void;
+}
+
+async function normalizeSvgBlob(blob: Blob): Promise<Blob> {
+  try {
+    const text = await blob.text();
+    if (text.includes('<svg') && !text.includes('xmlns=')) {
+      const fixed = text.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
+      return new Blob([fixed], { type: 'image/svg+xml' });
+    }
+  } catch {
+    // ignore
+  }
+  return blob;
+}
+
+function loadViaImageElement(blob: Blob): Promise<DrawableSource> {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const normBlob = await normalizeSvgBlob(blob);
+      const img = new Image();
+      const url = URL.createObjectURL(normBlob);
+      img.onload = () => {
+        const width = img.naturalWidth || img.width || 200;
+        const height = img.naturalHeight || img.height || 200;
+        resolve({
+          source: img,
+          width,
+          height,
+          close: () => URL.revokeObjectURL(url),
+        });
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error('ไม่สามารถถอดรหัสรูปภาพหรือ SVG ได้'));
+      };
+      img.src = url;
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
+async function loadImageSource(file: File | Blob): Promise<DrawableSource> {
+  const isSvg =
+    file.type === 'image/svg+xml' ||
+    (file instanceof File && file.name.toLowerCase().endsWith('.svg'));
+
+  if (!isSvg && typeof createImageBitmap === 'function') {
+    try {
+      const bmp = await createImageBitmap(file);
+      return {
+        source: bmp,
+        width: bmp.width,
+        height: bmp.height,
+        close: () => bmp.close(),
+      };
+    } catch {
+      return loadViaImageElement(file);
+    }
+  }
+  return loadViaImageElement(file);
+}
+
 async function rasterizeImageFile(
   file: File,
   opts: ImageProcessOpts,
 ): Promise<{ imageData: ImageData; w: number; h: number; previewUrl: string }> {
-  const bmp = await createImageBitmap(file);
-  const maxSide = opts.maxSide ?? 160;
-  const crop = Math.min(0.35, Math.max(0, opts.cropMargin ?? 0));
-  const sx = bmp.width * crop;
-  const sy = bmp.height * crop;
-  const sw = bmp.width * (1 - crop * 2);
-  const sh = bmp.height * (1 - crop * 2);
-  const scale = Math.min(1, maxSide / Math.max(sw, sh));
-  const w = Math.max(8, Math.round(sw * scale));
-  const h = Math.max(8, Math.round(sh * scale));
-  const canvas = document.createElement('canvas');
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext('2d')!;
-  ctx.clearRect(0, 0, w, h);
-  ctx.drawImage(bmp, sx, sy, sw, sh, 0, 0, w, h);
-  bmp.close();
-  const imageData = ctx.getImageData(0, 0, w, h);
+  const drawable = await loadImageSource(file);
+  const { source, width: srcW, height: srcH, close } = drawable;
 
-  if (opts.contrast || opts.brightness) {
-    const factor = (259 * ((opts.contrast || 0) + 255)) / (255 * (259 - (opts.contrast || 0)));
-    const bright = (opts.brightness || 0) * 2.55;
-    const px = imageData.data;
-    for (let i = 0; i < px.length; i += 4) {
-      if (px[i + 3] === 0) continue;
-      let r = px[i]! + bright;
-      let g = px[i + 1]! + bright;
-      let b = px[i + 2]! + bright;
-      r = factor * (r - 128) + 128;
-      g = factor * (g - 128) + 128;
-      b = factor * (b - 128) + 128;
-      px[i] = Math.max(0, Math.min(255, r));
-      px[i + 1] = Math.max(0, Math.min(255, g));
-      px[i + 2] = Math.max(0, Math.min(255, b));
-    }
-  }
+  try {
+    const maxSide = opts.maxSide ?? 160;
+    const crop = Math.min(0.35, Math.max(0, opts.cropMargin ?? 0));
+    const sx = srcW * crop;
+    const sy = srcH * crop;
+    const sw = srcW * (1 - crop * 2);
+    const sh = srcH * (1 - crop * 2);
+    const scale = Math.min(1, maxSide / Math.max(sw, sh));
+    const w = Math.max(8, Math.round(sw * scale));
+    const h = Math.max(8, Math.round(sh * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d')!;
+    ctx.clearRect(0, 0, w, h);
+    ctx.drawImage(source, sx, sy, sw, sh, 0, 0, w, h);
+    const imageData = ctx.getImageData(0, 0, w, h);
 
-  if (opts.knockOutWhite) {
-    const thr = opts.whiteThreshold ?? 235;
-    const px = imageData.data;
-    for (let i = 0; i < px.length; i += 4) {
-      if (px[i]! >= thr && px[i + 1]! >= thr && px[i + 2]! >= thr) {
-        px[i + 3] = 0;
+    if (opts.contrast || opts.brightness) {
+      const factor = (259 * ((opts.contrast || 0) + 255)) / (255 * (259 - (opts.contrast || 0)));
+      const bright = (opts.brightness || 0) * 2.55;
+      const px = imageData.data;
+      for (let i = 0; i < px.length; i += 4) {
+        if (px[i + 3] === 0) continue;
+        let r = px[i]! + bright;
+        let g = px[i + 1]! + bright;
+        let b = px[i + 2]! + bright;
+        r = factor * (r - 128) + 128;
+        g = factor * (g - 128) + 128;
+        b = factor * (b - 128) + 128;
+        px[i] = Math.max(0, Math.min(255, r));
+        px[i + 1] = Math.max(0, Math.min(255, g));
+        px[i + 2] = Math.max(0, Math.min(255, b));
       }
     }
-    ctx.putImageData(imageData, 0, 0);
+
+    if (opts.knockOutWhite) {
+      const thr = opts.whiteThreshold ?? 235;
+      const px = imageData.data;
+      for (let i = 0; i < px.length; i += 4) {
+        if (px[i]! >= thr && px[i + 1]! >= thr && px[i + 2]! >= thr) {
+          px[i + 3] = 0;
+        }
+      }
+      ctx.putImageData(imageData, 0, 0);
+    }
+    return { imageData, w, h, previewUrl: canvas.toDataURL('image/png') };
+  } finally {
+    close();
   }
-  return { imageData, w, h, previewUrl: canvas.toDataURL('image/png') };
 }
 
 /** Full wizard path: preprocess → quantize → regions + palette preview. */

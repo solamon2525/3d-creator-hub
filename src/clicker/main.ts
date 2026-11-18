@@ -76,6 +76,7 @@ type State = {
   colorMode: ColorMode;
   keychain: boolean;
   keychainStyle: 'loop' | 'hole';
+  keychainAngle: number;
   maxColors: number;
   cropMargin: number;
   knockOutWhite: boolean;
@@ -117,6 +118,7 @@ const state: State = {
   colorMode: 'ams',
   keychain: true,
   keychainStyle: 'loop',
+  keychainAngle: 0,
   maxColors: 4,
   cropMargin: 0.05,
   knockOutWhite: true,
@@ -151,6 +153,8 @@ function getTemplates(): Promise<MeshArrays[]> {
 }
 
 let imageRegions: ColorRegion[] | null = null;
+let svgRegions: ColorRegion[] | null = null;
+let lastSvgText: string | null = null;
 let lastParts: ExportPart[] = [];
 let lastImageFile: File | null = null;
 let palettePreview: string[] = [];
@@ -239,8 +243,21 @@ async function build(st: State) {
       group.add(capThree);
     }
 
-    // Characters distribution (1 character per keycap)
-    const textChars = Array.from(st.name.trim() || 'Name');
+function splitKeycapTokens(text: string): string[] {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+  if (trimmed.includes(' ')) {
+    return trimmed.split(/\s+/).filter(Boolean);
+  }
+  if (typeof Intl !== 'undefined' && 'Segmenter' in Intl) {
+    const segmenter = new Intl.Segmenter('th', { granularity: 'grapheme' });
+    return Array.from(segmenter.segment(trimmed), (s) => s.segment);
+  }
+  return Array.from(trimmed);
+}
+
+    // Characters distribution (1 character or grapheme cluster per keycap)
+    const textChars = splitKeycapTokens(st.name.trim() || 'Name');
     const { font } = await loadFontForText(st.fontId, st.name || '1');
 
     for (let i = 0; i < blockCaps.length; i++) {
@@ -328,11 +345,14 @@ async function build(st: State) {
   // 3. Keychain Attachment
   if (st.keychain) {
     const lugDist = (st.lockBaseSize ? st.baseWidth : s) / 2 + 3;
+    const angleRad = ((st.keychainAngle ?? 0) * Math.PI) / 180;
+    const cx = lugDist * Math.cos(angleRad);
+    const cy = lugDist * Math.sin(angleRad);
     const lugOuter = await extrudeRings(
       [
         Array.from({ length: 32 }, (_, i) => {
           const a = (i / 32) * Math.PI * 2;
-          return [lugDist + Math.cos(a) * 4, Math.sin(a) * 4] as [number, number];
+          return [cx + Math.cos(a) * 4, cy + Math.sin(a) * 4] as [number, number];
         }),
       ],
       bodyH * 0.7,
@@ -343,7 +363,7 @@ async function build(st: State) {
         [
           Array.from({ length: 24 }, (_, i) => {
             const a = (i / 24) * Math.PI * 2;
-            return [lugDist + Math.cos(a) * 2.2, Math.sin(a) * 2.2] as [number, number];
+            return [cx + Math.cos(a) * 2.2, cy + Math.sin(a) * 2.2] as [number, number];
           }),
         ],
         bodyH,
@@ -354,11 +374,14 @@ async function build(st: State) {
       disposeManifold(body, lugOuter, hole, lug);
       body = bodyWithLug;
     } else {
+      const holeDist = Math.max(0, lugDist - 6);
+      const hcx = holeDist * Math.cos(angleRad);
+      const hcy = holeDist * Math.sin(angleRad);
       const hole = await extrudeRings(
         [
           Array.from({ length: 24 }, (_, i) => {
             const a = (i / 24) * Math.PI * 2;
-            return [lugDist - 6 + Math.cos(a) * 2.6, Math.sin(a) * 2.6] as [number, number];
+            return [hcx + Math.cos(a) * 2.6, hcy + Math.sin(a) * 2.6] as [number, number];
           }),
         ],
         bodyH + 1,
@@ -419,12 +442,21 @@ async function build(st: State) {
     } else if (st.importMode === 'icon') {
       const svg = getIconSvg(st.selectedIcon || 'Heart', st.textColor);
       if (svg) {
-        regions = await svgTextToRegions(svg, st.letterSize * 1.5, st.maxColors);
+        const iconSize = Math.max(8, Math.min(st.letterSize * 1.3, 15.5));
+        regions = await svgTextToRegions(svg, iconSize, st.maxColors);
       }
-    } else if (imageRegions?.length) {
-      regions = imageRegions;
-    } else if (st.importMode === 'image' || st.importMode === 'svg') {
-      warns.push('ยังไม่ได้อัปโหลดไฟล์ — เลือกไฟล์รูปหรือ SVG ที่แถบขวา');
+    } else if (st.importMode === 'svg') {
+      if (svgRegions?.length) {
+        regions = svgRegions;
+      } else {
+        warns.push('ยังไม่ได้อัปโหลดไฟล์ — เลือกไฟล์ SVG ที่แถบขวา');
+      }
+    } else if (st.importMode === 'image') {
+      if (imageRegions?.length) {
+        regions = imageRegions;
+      } else {
+        warns.push('ยังไม่ได้อัปโหลดไฟล์ — เลือกไฟล์รูปภาพที่แถบขวา');
+      }
     }
 
     let zi = 0;
@@ -452,7 +484,12 @@ async function build(st: State) {
       warns.push('ไม่มี mesh ตัวอักษร');
     }
   } catch (e) {
-    warns.push(e instanceof Error ? e.message : String(e));
+    const rawMsg = e instanceof Error ? e.message : String(e);
+    if (rawMsg.includes('source image could not be decoded') || rawMsg.includes('decode')) {
+      warns.push('ไม่สามารถถอดรหัสรูปภาพหรือไอคอนได้ — กรุณาเลือกไอคอนอื่น หรืออัปโหลดไฟล์ใหม่');
+    } else {
+      warns.push(`ข้อผิดพลาด: ${rawMsg}`);
+    }
   }
 
   // 6. Build Three.js Assembly Group
@@ -573,6 +610,10 @@ mountShell({
           <div class="field"><label><input id="keychain" type="checkbox" ${state.keychain ? 'checked' : ''}/> ติดห่วงพวงกุญแจ</label></div>
           <div class="field"><label for="keychainStyle">แบบห่วง</label>
             <select id="keychainStyle"><option value="loop">Loop (หูยื่นนอกตัว)</option><option value="hole">Hole (เจาะรูในตัว)</option></select>
+          </div>
+          <div class="field">
+            <label for="keychainAngle">ตำแหน่งมุมห่วง: <span id="keychainAngleVal">${state.keychainAngle ?? 0}°</span></label>
+            <input id="keychainAngle" type="range" min="0" max="360" step="15" value="${state.keychainAngle ?? 0}" />
           </div>
         </section>
 
@@ -1006,9 +1047,13 @@ q<HTMLInputElement>('thick').oninput = (e) => {
   q('thickVal').textContent = String(state.thick);
   rebuildDebounced();
 };
-q<HTMLInputElement>('letterSize').oninput = (e) => {
+q<HTMLInputElement>('letterSize').oninput = async (e) => {
   state.letterSize = Number((e.target as HTMLInputElement).value);
   q('letterSizeVal').textContent = String(state.letterSize);
+  if (state.importMode === 'svg' && lastSvgText) {
+    const iconSize = Math.max(8, Math.min(state.letterSize * 1.3, 15.5));
+    svgRegions = await svgTextToRegions(lastSvgText, iconSize, state.maxColors);
+  }
   rebuildDebounced();
 };
 q<HTMLInputElement>('letterDepth').oninput = (e) => {
@@ -1071,6 +1116,12 @@ q<HTMLSelectElement>('keychainStyle').onchange = (e) => {
   state.keychainStyle = (e.target as HTMLSelectElement).value as 'loop' | 'hole';
   rebuildDebounced();
 };
+q<HTMLInputElement>('keychainAngle').value = String(state.keychainAngle ?? 0);
+q<HTMLInputElement>('keychainAngle').oninput = (e) => {
+  state.keychainAngle = Number((e.target as HTMLInputElement).value);
+  q('keychainAngleVal').textContent = `${state.keychainAngle}°`;
+  rebuildDebounced();
+};
 
 // 16. Image Wizard Handlers
 async function runImageWizard(file: File) {
@@ -1110,7 +1161,9 @@ q<HTMLInputElement>('svgFile').onchange = async (e) => {
   const file = (e.target as HTMLInputElement).files?.[0];
   if (!file) return;
   state.importMode = 'svg';
-  imageRegions = await svgTextToRegions(await file.text(), state.letterSize * 1.6, state.maxColors);
+  lastSvgText = await file.text();
+  const iconSize = Math.max(8, Math.min(state.letterSize * 1.3, 15.5));
+  svgRegions = await svgTextToRegions(lastSvgText, iconSize, state.maxColors);
   rebuildDebounced();
 };
 q<HTMLInputElement>('contrast').oninput = (e) => {
@@ -1127,10 +1180,16 @@ q<HTMLInputElement>('knockOutWhite').onchange = (e) => {
   state.knockOutWhite = (e.target as HTMLInputElement).checked;
   if (lastImageFile) void runImageWizard(lastImageFile).then(() => rebuildDebounced());
 };
-q<HTMLInputElement>('maxColors').oninput = (e) => {
+q<HTMLInputElement>('maxColors').oninput = async (e) => {
   state.maxColors = Number((e.target as HTMLInputElement).value);
   q('maxColorsVal').textContent = String(state.maxColors);
-  if (lastImageFile) void runImageWizard(lastImageFile).then(() => rebuildDebounced());
+  if (state.importMode === 'svg' && lastSvgText) {
+    const iconSize = Math.max(8, Math.min(state.letterSize * 1.3, 15.5));
+    svgRegions = await svgTextToRegions(lastSvgText, iconSize, state.maxColors);
+  } else if (lastImageFile) {
+    await runImageWizard(lastImageFile);
+  }
+  rebuildDebounced();
 };
 
 // 17. Modular Settings Handlers
