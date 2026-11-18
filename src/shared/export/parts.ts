@@ -220,9 +220,20 @@ export function escapeXml(value: string): string {
   return value.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]!));
 }
 
-export function build3mf(partsIn: ExportPart[]): Uint8Array {
+export type Build3mfOptions = {
+  layoutForBed?: boolean;
+  gap?: number;
+  flipFlushCaps?: boolean;
+};
+
+export function build3mf(partsIn: ExportPart[], options?: Build3mfOptions): Uint8Array {
   if (!partsIn.length) throw new Error('ไม่มีชิ้นส่วนสำหรับ export');
-  const parts = assignExtruders(partsIn);
+  const shouldLayout = options?.layoutForBed ?? true;
+  const partsBase = shouldLayout
+    ? layoutPartsForBed(partsIn, { gap: options?.gap, flipFlushCaps: options?.flipFlushCaps })
+    : partsIn;
+  const parts = assignExtruders(partsBase);
+
   const basematerials = parts
     .map((p) => {
       const [r, g, b] = p.colorRgb;
@@ -260,13 +271,39 @@ export function build3mf(partsIn: ExportPart[]): Uint8Array {
   </build>
 </model>`;
 
+  // Create Bambu-compatible plate & AMS mapping metadata
+  const filamentMap = new Map<number, { id: number; color: string; name: string; type: string }>();
+  parts.forEach((p) => {
+    const slot = p.extruder ?? 1;
+    if (!filamentMap.has(slot)) {
+      const [r, g, b] = p.colorRgb;
+      const hex = '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
+      filamentMap.set(slot, {
+        id: slot,
+        color: hex,
+        name: p.name,
+        type: 'PLA',
+      });
+    }
+  });
+
+  const plateMeta = {
+    plate_name: 'Plate 1 (Textured PEI)',
+    bed_type: 'textured_plate',
+    bed_width: 256,
+    bed_height: 256,
+    filaments: Array.from(filamentMap.values()).sort((a, b) => a.id - b.id),
+  };
+
   const files: Record<string, Uint8Array> = {
     '3D/3dmodel.model': strToU8(model),
+    'Metadata/plate_1.json': strToU8(JSON.stringify(plateMeta, null, 2)),
     '[Content_Types].xml': strToU8(`<?xml version="1.0" encoding="UTF-8"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>
   <Default Extension="config" ContentType="application/octet-stream"/>
+  <Default Extension="json" ContentType="application/json"/>
 </Types>`),
     '_rels/.rels': strToU8(`<?xml version="1.0" encoding="UTF-8"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
@@ -291,15 +328,18 @@ export function exportParts(
   parts: ExportPart[],
   basename: string,
   format: '3mf' | 'stl' = '3mf',
+  options?: Build3mfOptions,
 ) {
   if (!parts.length) throw new Error('ไม่มีชิ้นส่วนสำหรับ export');
   if (format === 'stl') {
-    // Merge all into one binary STL (loses color)
-    const merged = mergeMeshes(parts.map((p) => p.mesh));
+    const partsForStl = options?.layoutForBed ?? true
+      ? layoutPartsForBed(parts, { gap: options?.gap, flipFlushCaps: options?.flipFlushCaps })
+      : parts;
+    const merged = mergeMeshes(partsForStl.map((p) => p.mesh));
     downloadBlob(new Blob([writeBinaryStl(merged)], { type: 'model/stl' }), `${basename}.stl`);
     return;
   }
-  const bytes = build3mf(parts);
+  const bytes = build3mf(parts, options);
   const copy = new Uint8Array(bytes.byteLength);
   copy.set(bytes);
   downloadBlob(new Blob([copy], { type: 'model/3mf' }), `${basename}.3mf`);
