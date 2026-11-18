@@ -181,37 +181,40 @@ export function createKeychainLugRings(
   bounds: { minX: number; maxX: number; minY: number; maxY: number },
   position: KeychainPos = 'left',
   holeDiameter = 4.5,
-  lugRadius = 5.0
+  lugRadius?: number
 ): { lugRing: Ring; holeRing: Ring } {
+  const holeR = Math.max(1.5, holeDiameter / 2);
+  // Guarantee outer wall thickness >= 2.0mm around the hole
+  const minLugR = holeR + 2.0;
+  const actualLugR = Math.max(minLugR, lugRadius ?? (holeR + 2.2));
   let cx = 0;
   let cy = (bounds.minY + bounds.maxY) / 2;
 
   switch (position) {
     case 'right':
-      cx = bounds.maxX + lugRadius * 0.7;
+      cx = bounds.maxX + actualLugR * 0.7;
       break;
     case 'top':
       cx = (bounds.minX + bounds.maxX) / 2;
-      cy = bounds.maxY + lugRadius * 0.7;
+      cy = bounds.maxY + actualLugR * 0.7;
       break;
     case 'bottom':
       cx = (bounds.minX + bounds.maxX) / 2;
-      cy = bounds.minY - lugRadius * 0.7;
+      cy = bounds.minY - actualLugR * 0.7;
       break;
     case 'left':
     default:
-      cx = bounds.minX - lugRadius * 0.7;
+      cx = bounds.minX - actualLugR * 0.7;
       break;
   }
 
   const steps = 32;
   const lugRing: Ring = [];
   const holeRing: Ring = [];
-  const holeR = holeDiameter / 2;
 
   for (let i = 0; i < steps; i++) {
     const a = (i / steps) * Math.PI * 2;
-    lugRing.push([cx + Math.cos(a) * lugRadius, cy + Math.sin(a) * lugRadius]);
+    lugRing.push([cx + Math.cos(a) * actualLugR, cy + Math.sin(a) * actualLugR]);
     holeRing.push([cx + Math.cos(a) * holeR, cy + Math.sin(a) * holeR]);
   }
 

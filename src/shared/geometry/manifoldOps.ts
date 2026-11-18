@@ -2,6 +2,7 @@ import Module from 'manifold-3d';
 import type { Manifold as ManifoldClass, ManifoldToplevel, Mesh } from 'manifold-3d';
 import manifoldWasmUrl from 'manifold-3d/manifold.wasm?url';
 import type { Ring } from './textToContours';
+import { buildReinforcedCross } from './mxStem';
 
 export type MeshArrays = {
   vertProperties: Float32Array;
@@ -125,10 +126,10 @@ export async function mxCrossSolid(
   length: number,
   thickness: number,
   height: number,
+  chamferBase = true,
 ): Promise<Solid> {
-  const barX = await box(length, thickness, height, true);
-  const barY = await box(thickness, length, height, true);
-  return union(barX, barY);
+  const M = await getManifold();
+  return buildReinforcedCross(M, length, thickness, height, chamferBase);
 }
 
 export function manifoldToMesh(solid: Solid): MeshArrays {

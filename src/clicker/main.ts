@@ -357,7 +357,7 @@ function splitKeycapTokens(text: string): string[] {
       [
         Array.from({ length: 32 }, (_, i) => {
           const a = (i / 32) * Math.PI * 2;
-          return [cx + Math.cos(a) * 4, cy + Math.sin(a) * 4] as [number, number];
+          return [cx + Math.cos(a) * 4.4, cy + Math.sin(a) * 4.4] as [number, number];
         }),
       ],
       bodyH * 0.7,

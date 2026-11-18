@@ -60,3 +60,39 @@ export function stabOffsetsX(unit: number): number[] {
   if (unit >= 2) return [-MX.stabOffset2u, MX.stabOffset2u];
   return [];
 }
+
+/**
+ * Builds a watertight MX cross solid with an optional 45° flared root fillet (chamferBase)
+ * to reinforce the stem against layer-shear snapping during repeated mechanical switch clicks.
+ */
+export function buildReinforcedCross(
+  M: any,
+  length: number,
+  thickness: number,
+  height: number,
+  chamferBase = true,
+) {
+  const barX = M.Manifold.cube([length, thickness, height], true);
+  const barY = M.Manifold.cube([thickness, length, height], true);
+  let cross = M.Manifold.union(barX, barY);
+  barX.delete();
+  barY.delete();
+
+  if (chamferBase) {
+    // 45-degree flared root base chamfer (height 1.2mm, flare +0.75mm on each side)
+    const rootH = Math.min(1.2, height * 0.3);
+    const flare = 0.75;
+    const baseBarX = M.Manifold.cube([length + flare * 2, thickness + flare * 2, rootH], true);
+    const baseBarY = M.Manifold.cube([thickness + flare * 2, length + flare * 2, rootH], true);
+    const flared = M.Manifold.union(baseBarX, baseBarY);
+    baseBarX.delete();
+    baseBarY.delete();
+    const flaredPlaced = flared.translate([0, 0, -height / 2 + rootH / 2]);
+    flared.delete();
+    const joined = M.Manifold.union(cross, flaredPlaced);
+    cross.delete();
+    flaredPlaced.delete();
+    cross = joined;
+  }
+  return cross;
+}
