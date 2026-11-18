@@ -246,6 +246,8 @@ export interface BlockSolidsResult {
   }[];
 }
 
+import type { KeycapProfile } from './profiles';
+
 export interface BlockBuildOptions {
   bodyH?: number;
   floor?: number;
@@ -255,7 +257,7 @@ export interface BlockBuildOptions {
   capH?: number;
   solidFloor?: boolean; // 100% solid bottom on bed (default: true)
   borders?: boolean;    // V-groove borders dividing key cells (default: true)
-  keycapProfile?: 'standard' | 'flat'; // default: 'standard' (OEM sculpted taper)
+  keycapProfile?: KeycapProfile; // default: 'standard' (OEM sculpted taper)
 }
 
 /**

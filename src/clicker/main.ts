@@ -40,6 +40,7 @@ import { createBaseOutline, SHAPE_LABELS, type BaseShape } from './shapes';
 import { DEFAULT_FIT, normalizeFit, createFitTestStripSolids, type FitSettings } from './fit';
 import { ICON_CATEGORIES, getIconSvg, searchIcons } from './iconCatalog';
 import { BLOCK_PRESETS, buildBlockSolids, type BlockPreset } from './blocks';
+import type { KeycapProfile } from './profiles';
 
 type ImportMode = 'text' | 'icon' | 'image' | 'svg' | 'blocks';
 type ColorMode = 'ams' | 'zband';
@@ -61,7 +62,8 @@ type State = {
   blockPreset: BlockPreset;
   blockBorders: boolean;
   blockSolidFloor: boolean;
-  keycapProfile: 'standard' | 'flat';
+  keycapProfile: KeycapProfile;
+  decorationStyle: 'embossed' | 'flush';
   contrast: number;
   brightness: number;
   bodyColor: string;
@@ -81,6 +83,7 @@ type State = {
   cropMargin: number;
   knockOutWhite: boolean;
   exploded: boolean;
+  explodePercent: number;
   activeLeftTab: LeftTab;
   cutActive: boolean;
   cutAxis: 'x' | 'y' | 'z';
@@ -104,6 +107,7 @@ const state: State = {
   blockBorders: true,
   blockSolidFloor: true,
   keycapProfile: 'standard',
+  decorationStyle: 'embossed',
   contrast: 0,
   brightness: 0,
   bodyColor: '#0f172a',
@@ -123,6 +127,7 @@ const state: State = {
   cropMargin: 0.05,
   knockOutWhite: true,
   exploded: false,
+  explodePercent: 0,
   activeLeftTab: 'shape',
   cutActive: false,
   cutAxis: 'x',
@@ -419,13 +424,11 @@ function splitKeycapTokens(text: string): string[] {
   const stemPlaced = stem.translate([0, 0, -2]);
   const capJoined = await union(cap, stemPlaced);
   disposeManifold(cap, stem, stemPlaced);
-  const capLifted = capJoined.translate([0, 0, capBottom]);
-  const capMesh = manifoldToMesh(capLifted);
-  disposeManifold(capJoined, capLifted);
+  let capLifted = capJoined.translate([0, 0, capBottom]);
+  disposeManifold(capJoined);
 
   const parts: ExportPart[] = [
     { name: 'body', mesh: bodyMesh, colorRgb: hexToRgb(st.bodyColor), extruder: 1 },
-    { name: 'cap', mesh: capMesh, colorRgb: hexToRgb(st.capColor), extruder: 2 },
   ];
 
   // 5. Contextual Decoration (Text, Icon, Image, SVG, Blocks)
@@ -459,16 +462,28 @@ function splitKeycapTokens(text: string): string[] {
       }
     }
 
+    const isFlush = st.decorationStyle === 'flush';
     let zi = 0;
     for (const region of regions) {
-      const bandDepth =
-        st.colorMode === 'zband'
+      const bandDepth = isFlush
+        ? 0.8
+        : (st.colorMode === 'zband'
           ? Math.max(0.45, st.letterDepth * 0.55)
-          : Math.max(0.8, st.letterDepth);
-      const z0 = capTop + 0.25 + (st.colorMode === 'zband' ? zi * bandDepth : zi * 0.02);
+          : Math.max(0.8, st.letterDepth));
+      const z0 = isFlush
+        ? (capTop - bandDepth + 0.02)
+        : (capTop + 0.25 + (st.colorMode === 'zband' ? zi * bandDepth : zi * 0.02));
       const solid = await extrudeRings(region.rings, bandDepth, false);
       const placed = solid.translate([0, 0, z0]);
-      const name = st.colorMode === 'zband' ? `zband-${zi}` : `decor-${zi}`;
+
+      if (isFlush) {
+        // Cut pocket in cap body for flush insetting
+        const cut = await difference(capLifted, placed);
+        disposeManifold(capLifted);
+        capLifted = cut;
+      }
+
+      const name = isFlush ? `flush-${zi}` : (st.colorMode === 'zband' ? `zband-${zi}` : `decor-${zi}`);
       const mesh = manifoldToMesh(placed);
       parts.push({
         name,
@@ -480,6 +495,11 @@ function splitKeycapTokens(text: string): string[] {
       disposeManifold(solid, placed);
       zi++;
     }
+
+    const capMesh = manifoldToMesh(capLifted);
+    disposeManifold(capLifted);
+    parts.splice(1, 0, { name: 'cap', mesh: capMesh, colorRgb: hexToRgb(st.capColor), extruder: 2 });
+
     if (!regions.length && st.importMode === 'text') {
       warns.push('ไม่มี mesh ตัวอักษร');
     }
@@ -490,6 +510,9 @@ function splitKeycapTokens(text: string): string[] {
     } else {
       warns.push(`ข้อผิดพลาด: ${rawMsg}`);
     }
+    const capMesh = manifoldToMesh(capLifted);
+    disposeManifold(capLifted);
+    parts.splice(1, 0, { name: 'cap', mesh: capMesh, colorRgb: hexToRgb(st.capColor), extruder: 2 });
   }
 
   // 6. Build Three.js Assembly Group
@@ -503,7 +526,7 @@ function splitKeycapTokens(text: string): string[] {
       { raised },
     );
     mesh.rotation.x = -Math.PI / 2;
-    mesh.userData.explodeGroup = p.name === 'body' ? 0 : 1;
+    mesh.userData.explodeGroup = p.name === 'body' ? 0 : (decorNames.includes(p.name) ? 2 : 1);
     group.add(mesh);
   }
   return { group, parts, warnings: warns };
@@ -638,9 +661,13 @@ mountShell({
       <!-- 2. CENTER VIEWPORT: 3D STAGE & TOOLBAR -->
       <div class="stage-wrap">
         <div class="viewport-toolbar">
-          <div class="toolbar-group">
-            <button type="button" class="tool-btn ${state.exploded ? '' : 'active'}" id="btnViewAssembled">Assembled</button>
-            <button type="button" class="tool-btn ${state.exploded ? 'active' : ''}" id="btnViewExploded">Exploded</button>
+          <div class="toolbar-group" style="display:flex;align-items:center;gap:0.4rem">
+            <button type="button" class="tool-btn ${state.explodePercent === 0 ? 'active' : ''}" id="btnViewAssembled">Assembled</button>
+            <div style="display:inline-flex;align-items:center;gap:0.3rem">
+              <label for="explodeSlider" style="font-size:0.75rem;color:var(--text-muted)">แยกชิ้น:</label>
+              <input id="explodeSlider" type="range" min="0" max="100" step="5" value="${state.explodePercent}" style="width:75px"/>
+              <span id="explodeVal" style="font-size:0.75rem;min-width:32px">${state.explodePercent}%</span>
+            </div>
           </div>
           <div class="toolbar-sep"></div>
           <div class="toolbar-group">
@@ -663,6 +690,13 @@ mountShell({
       <!-- 3. RIGHT SIDEBAR: CONTEXTUAL IMPORT SOURCE & EXPORT -->
       <aside class="panel-right">
         <h2 style="font-size:1.1rem;margin:0 0 0.4rem;font-weight:700">🎨 Decoration</h2>
+        <div class="field" style="margin-bottom:0.6rem">
+          <label for="decorationStyle">สไตล์ลวดลาย (Legend Style)</label>
+          <select id="decorationStyle">
+            <option value="embossed" ${state.decorationStyle === 'embossed' ? 'selected' : ''}>ลายนูน (Embossed +1.2mm)</option>
+            <option value="flush" ${state.decorationStyle === 'flush' ? 'selected' : ''}>ลายจมเสมอผิว (Flush Inset สำหรับเตา PEI)</option>
+          </select>
+        </div>
         <div class="tabs" id="importTabs" style="margin-bottom:0.6rem">
           <button type="button" class="subtab-btn ${state.importMode === 'text' ? 'active' : ''}" data-mode="text">Text</button>
           <button type="button" class="subtab-btn ${state.importMode === 'icon' ? 'active' : ''}" data-mode="icon">Icon</button>
@@ -751,7 +785,10 @@ mountShell({
             <label for="keycapProfile">ทรงคีย์แคป (Keycap Profile)</label>
             <select id="keycapProfile">
               <option value="standard" ${state.keycapProfile === 'standard' ? 'selected' : ''}>Standard (OEM Tapered สโลปสอบ)</option>
-              <option value="flat" ${state.keycapProfile === 'flat' ? 'selected' : ''}>Flat (ขอบตรงระนาบเดียว)</option>
+              <option value="flat" ${state.keycapProfile === 'flat' ? 'selected' : ''}>Flat (Chiclet หน้าเรียบขอบมน)</option>
+              <option value="dsa" ${state.keycapProfile === 'dsa' ? 'selected' : ''}>DSA (7.6mm เว้ากลมกลาง Retro)</option>
+              <option value="xda" ${state.keycapProfile === 'xda' ? 'selected' : ''}>XDA (9.2mm หน้ากว้างเว้ากลม Ergonomic)</option>
+              <option value="moa" ${state.keycapProfile === 'moa' ? 'selected' : ''}>MOA (9.8mm ขอบมนฟูโมเดิร์น)</option>
             </select>
           </div>
           <div class="field">
@@ -825,7 +862,7 @@ async function rebuild() {
     }
     lastParts = parts;
     viewer.setRoot(group);
-    viewer.setExplodedZ(snapshot.exploded ? 14 : 0);
+    viewer.setExplodedZ((snapshot.explodePercent / 100) * 16);
     viewer.fitToObject(2.0);
     writeHashParams({
       name: state.name,
@@ -946,15 +983,18 @@ q<HTMLInputElement>('iconSearchInput').oninput = (e) => {
 // 13. Viewport Toolbar Event Bindings
 q<HTMLButtonElement>('btnViewAssembled').onclick = () => {
   state.exploded = false;
+  state.explodePercent = 0;
+  q<HTMLInputElement>('explodeSlider').value = '0';
+  q('explodeVal').textContent = '0%';
   q('btnViewAssembled').classList.add('active');
-  q('btnViewExploded').classList.remove('active');
   viewer.setExplodedZ(0);
 };
-q<HTMLButtonElement>('btnViewExploded').onclick = () => {
-  state.exploded = true;
-  q('btnViewExploded').classList.add('active');
-  q('btnViewAssembled').classList.remove('active');
-  viewer.setExplodedZ(14);
+q<HTMLInputElement>('explodeSlider').oninput = (e) => {
+  state.explodePercent = Number((e.target as HTMLInputElement).value);
+  state.exploded = state.explodePercent > 0;
+  q('explodeVal').textContent = `${state.explodePercent}%`;
+  q('btnViewAssembled').classList.toggle('active', state.explodePercent === 0);
+  viewer.setExplodedZ((state.explodePercent / 100) * 16);
 };
 q<HTMLButtonElement>('btnToggleCut').onclick = () => {
   state.cutActive = !state.cutActive;
@@ -1103,8 +1143,14 @@ q<HTMLInputElement>('blockSolidFloor').onchange = (e) => {
   state.blockSolidFloor = (e.target as HTMLInputElement).checked;
   rebuildDebounced();
 };
+q<HTMLSelectElement>('keycapProfile').value = state.keycapProfile;
 q<HTMLSelectElement>('keycapProfile').onchange = (e) => {
-  state.keycapProfile = (e.target as HTMLSelectElement).value as 'standard' | 'flat';
+  state.keycapProfile = (e.target as HTMLSelectElement).value as KeycapProfile;
+  rebuildDebounced();
+};
+q<HTMLSelectElement>('decorationStyle').value = state.decorationStyle;
+q<HTMLSelectElement>('decorationStyle').onchange = (e) => {
+  state.decorationStyle = (e.target as HTMLSelectElement).value as 'embossed' | 'flush';
   rebuildDebounced();
 };
 q<HTMLInputElement>('keychain').onchange = (e) => {
