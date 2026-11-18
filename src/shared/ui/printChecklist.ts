@@ -85,6 +85,19 @@ const ITEMS: Record<StudioId, Item[]> = {
       when: (c) => !!c.keychain,
     },
     {
+      id: 'stem-fillet',
+      label: 'ก้านสวิตช์ MX: เสริม Fillet 45° ที่โคนก้าน ลดแรงเค้น ไม่หักง่ายตอนกดสวิตช์',
+    },
+    {
+      id: 'loop-wall',
+      label: 'ห่วงพวงกุญแจ: ความหนาเนื้อรอบรูห่วง ≥ 2.0 mm แข็งแรงทนทาน',
+      when: (c) => !!c.keychain,
+    },
+    {
+      id: 'bed-layout',
+      label: 'การจัดวางบนเตาพิมพ์: อัตโนมัติ Z=0 แยกชิ้นพร้อมปริ้นท์บนเตา Bambu 256×256 mm',
+    },
+    {
       id: 'export',
       label: 'Export 3MF + Cover แล้วเปิดใน slicer',
     },

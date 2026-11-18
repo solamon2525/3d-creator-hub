@@ -77,6 +77,8 @@ export interface StudioViewer {
   setExplodedZ(gapMm: number): void;
   setClipping(axis: 'x' | 'y' | 'z' | null, position: number): void;
   fitToObject(padding?: number): void;
+  setPrintBed(active: boolean): void;
+  isPrintBed(): boolean;
   dispose(): void;
 }
 
@@ -111,6 +113,28 @@ export function createStudioViewer(container: HTMLElement): StudioViewer {
 
   const grid = new THREE.GridHelper(80, 16, 0x334155, 0x1e293b);
   scene.add(grid);
+
+  // Bambu Lab 256x256 textured PEI build plate simulation
+  const bedGroup = new THREE.Group();
+  const bedGeo = new THREE.PlaneGeometry(256, 256);
+  bedGeo.rotateX(-Math.PI / 2);
+  const bedMat = new THREE.MeshStandardMaterial({
+    color: 0x1e293b,
+    roughness: 0.9,
+    metalness: 0.1,
+  });
+  const bedPlate = new THREE.Mesh(bedGeo, bedMat);
+  bedPlate.position.y = -0.15;
+  bedPlate.receiveShadow = true;
+  bedGroup.add(bedPlate);
+
+  const bedGrid = new THREE.GridHelper(256, 16, 0x0ea5e9, 0x334155);
+  bedGrid.position.y = 0;
+  bedGroup.add(bedGrid);
+
+  bedGroup.visible = false;
+  scene.add(bedGroup);
+  let isBedActive = false;
 
   const root = new THREE.Group();
   scene.add(root);
@@ -195,6 +219,22 @@ export function createStudioViewer(container: HTMLElement): StudioViewer {
       camera.far = maxDim * 50;
       camera.updateProjectionMatrix();
       controls.update();
+    },
+    setPrintBed(active: boolean) {
+      isBedActive = active;
+      bedGroup.visible = active;
+      grid.visible = !active;
+      if (active) {
+        controls.target.set(0, 5, 0);
+        camera.position.set(0, 160, 200);
+        camera.near = 0.1;
+        camera.far = 2000;
+        camera.updateProjectionMatrix();
+        controls.update();
+      }
+    },
+    isPrintBed() {
+      return isBedActive;
     },
     dispose() {
       cancelAnimationFrame(frame);

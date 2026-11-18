@@ -21,7 +21,7 @@ import {
   manifoldToMesh,
   union,
 } from '../shared/geometry/manifoldOps';
-import { exportParts, type ExportPart } from '../shared/export/parts';
+import { exportParts, layoutPartsForBed, type ExportPart } from '../shared/export/parts';
 import { hexToRgb } from '../shared/units';
 import { dilateTextContours } from './contour';
 import {
@@ -56,6 +56,7 @@ interface KeychainState {
   textColor: string;
   mirrorMode: boolean;
   explodePercent: number;
+  viewMode: 'assembled' | 'printBed';
 }
 
 const state: KeychainState = {
@@ -77,6 +78,7 @@ const state: KeychainState = {
   textColor: '#f59e0b',
   mirrorMode: false,
   explodePercent: 0,
+  viewMode: 'assembled',
 };
 
 Object.assign(state, loadProject<Partial<KeychainState>>('keychain') ?? {});
@@ -338,7 +340,8 @@ mountShell({
       <div class="stage-wrap">
         <div class="viewport-toolbar">
           <div class="toolbar-group" style="display:flex;align-items:center;gap:0.4rem">
-            <button type="button" class="tool-btn ${state.explodePercent === 0 ? 'active' : ''}" id="btnViewAssembled">Assembled</button>
+            <button type="button" class="tool-btn ${state.viewMode === 'assembled' && state.explodePercent === 0 ? 'active' : ''}" id="btnViewAssembled">Assembled</button>
+            <button type="button" class="tool-btn ${state.viewMode === 'printBed' ? 'active' : ''}" id="btnTogglePrintBed">🖨️ Print Bed</button>
             <div style="display:inline-flex;align-items:center;gap:0.3rem">
               <label for="explodeSlider" style="font-size:0.75rem;color:var(--text-muted)">แยกชิ้น:</label>
               <input id="explodeSlider" type="range" min="0" max="100" step="5" value="${state.explodePercent}" style="width:75px"/>
@@ -445,9 +448,24 @@ async function rebuild() {
       return;
     }
     lastParts = parts;
-    viewer.setRoot(group);
-    viewer.setExplodedZ((snapshot.explodePercent / 100) * 16);
-    viewer.fitToObject(1.8);
+    if (state.viewMode === 'printBed') {
+      viewer.setPrintBed(true);
+      const laidOut = layoutPartsForBed(parts, { gap: 12 });
+      const bedGroup = new THREE.Group();
+      for (const p of laidOut) {
+        const c = p.colorRgb;
+        const m = meshArraysToThree(p.mesh, new THREE.Color(c[0] / 255, c[1] / 255, c[2] / 255));
+        m.rotation.x = -Math.PI / 2;
+        bedGroup.add(m);
+      }
+      viewer.setRoot(bedGroup);
+      viewer.fitToObject(1.8);
+    } else {
+      viewer.setPrintBed(false);
+      viewer.setRoot(group);
+      viewer.setExplodedZ((snapshot.explodePercent / 100) * 16);
+      viewer.fitToObject(1.8);
+    }
 
     writeHashParams({
       text: state.text,
@@ -551,11 +569,21 @@ q<HTMLSelectElement>('themeSelect').onchange = (e) => {
 
 // Toolbar bindings
 q<HTMLButtonElement>('btnViewAssembled').onclick = () => {
+  state.viewMode = 'assembled';
   state.explodePercent = 0;
   q<HTMLInputElement>('explodeSlider').value = '0';
   q('explodeVal').textContent = '0%';
   q('btnViewAssembled').classList.add('active');
+  q('btnTogglePrintBed').classList.remove('active');
+  viewer.setPrintBed(false);
   viewer.setExplodedZ(0);
+  rebuild();
+};
+q<HTMLButtonElement>('btnTogglePrintBed').onclick = () => {
+  state.viewMode = state.viewMode === 'printBed' ? 'assembled' : 'printBed';
+  q('btnTogglePrintBed').classList.toggle('active', state.viewMode === 'printBed');
+  q('btnViewAssembled').classList.toggle('active', state.viewMode === 'assembled' && state.explodePercent === 0);
+  rebuild();
 };
 q<HTMLInputElement>('explodeSlider').oninput = (e) => {
   state.explodePercent = Number((e.target as HTMLInputElement).value);

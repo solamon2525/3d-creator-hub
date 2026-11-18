@@ -27,7 +27,7 @@ import {
   type MeshArrays,
 } from '../shared/geometry/manifoldOps';
 import { MX, mxCrossRects, mxSocketRects } from '../shared/geometry/mxStem';
-import { exportParts, buildStlZip, type ExportPart } from '../shared/export/parts';
+import { exportParts, buildStlZip, layoutPartsForBed, type ExportPart } from '../shared/export/parts';
 import { createModularSolids, DEFAULT_MODULAR, normalizeModular, modularParts, groundPart, MODULAR_GUIDE, type ModularSettings } from './modular';
 import { hexToRgb, filamentOptionsHtml, rgbToHex } from '../shared/units';
 import {
@@ -84,6 +84,7 @@ type State = {
   knockOutWhite: boolean;
   exploded: boolean;
   explodePercent: number;
+  viewMode: 'assembled' | 'printBed';
   activeLeftTab: LeftTab;
   cutActive: boolean;
   cutAxis: 'x' | 'y' | 'z';
@@ -128,6 +129,7 @@ const state: State = {
   knockOutWhite: true,
   exploded: false,
   explodePercent: 0,
+  viewMode: 'assembled',
   activeLeftTab: 'shape',
   cutActive: false,
   cutAxis: 'x',
@@ -662,7 +664,8 @@ mountShell({
       <div class="stage-wrap">
         <div class="viewport-toolbar">
           <div class="toolbar-group" style="display:flex;align-items:center;gap:0.4rem">
-            <button type="button" class="tool-btn ${state.explodePercent === 0 ? 'active' : ''}" id="btnViewAssembled">Assembled</button>
+            <button type="button" class="tool-btn ${state.viewMode === 'assembled' && state.explodePercent === 0 ? 'active' : ''}" id="btnViewAssembled">Assembled</button>
+            <button type="button" class="tool-btn ${state.viewMode === 'printBed' ? 'active' : ''}" id="btnTogglePrintBed">🖨️ Print Bed</button>
             <div style="display:inline-flex;align-items:center;gap:0.3rem">
               <label for="explodeSlider" style="font-size:0.75rem;color:var(--text-muted)">แยกชิ้น:</label>
               <input id="explodeSlider" type="range" min="0" max="100" step="5" value="${state.explodePercent}" style="width:75px"/>
@@ -861,9 +864,25 @@ async function rebuild() {
       return;
     }
     lastParts = parts;
-    viewer.setRoot(group);
-    viewer.setExplodedZ((snapshot.explodePercent / 100) * 16);
-    viewer.fitToObject(2.0);
+    if (state.viewMode === 'printBed') {
+      viewer.setPrintBed(true);
+      const laidOut = layoutPartsForBed(parts, { gap: 12, flipFlushCaps: state.decorationStyle === 'flush' });
+      const bedGroup = new THREE.Group();
+      for (const p of laidOut) {
+        const c = p.colorRgb;
+        const raised = p.name !== 'body' && p.name !== 'cap';
+        const m = meshArraysToThree(p.mesh, new THREE.Color(c[0] / 255, c[1] / 255, c[2] / 255), { raised });
+        m.rotation.x = -Math.PI / 2;
+        bedGroup.add(m);
+      }
+      viewer.setRoot(bedGroup);
+      viewer.fitToObject(1.8);
+    } else {
+      viewer.setPrintBed(false);
+      viewer.setRoot(group);
+      viewer.setExplodedZ((snapshot.explodePercent / 100) * 16);
+      viewer.fitToObject(2.0);
+    }
     writeHashParams({
       name: state.name,
       size: state.size,
@@ -982,12 +1001,22 @@ q<HTMLInputElement>('iconSearchInput').oninput = (e) => {
 
 // 13. Viewport Toolbar Event Bindings
 q<HTMLButtonElement>('btnViewAssembled').onclick = () => {
+  state.viewMode = 'assembled';
   state.exploded = false;
   state.explodePercent = 0;
   q<HTMLInputElement>('explodeSlider').value = '0';
   q('explodeVal').textContent = '0%';
   q('btnViewAssembled').classList.add('active');
+  q('btnTogglePrintBed').classList.remove('active');
+  viewer.setPrintBed(false);
   viewer.setExplodedZ(0);
+  rebuild();
+};
+q<HTMLButtonElement>('btnTogglePrintBed').onclick = () => {
+  state.viewMode = state.viewMode === 'printBed' ? 'assembled' : 'printBed';
+  q('btnTogglePrintBed').classList.toggle('active', state.viewMode === 'printBed');
+  q('btnViewAssembled').classList.toggle('active', state.viewMode === 'assembled' && state.explodePercent === 0);
+  rebuild();
 };
 q<HTMLInputElement>('explodeSlider').oninput = (e) => {
   state.explodePercent = Number((e.target as HTMLInputElement).value);
