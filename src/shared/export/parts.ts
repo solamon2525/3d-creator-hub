@@ -1,6 +1,6 @@
 import { zipSync, strToU8 } from 'fflate';
 import type { RGB } from '../units';
-import { downloadBlob } from './download';
+import { downloadBlob } from './download.ts';
 import type { MeshArrays } from '../geometry/manifoldOps';
 
 export type ExportPart = {
@@ -10,6 +10,134 @@ export type ExportPart = {
   /** 1-based extruder slot */
   extruder?: number;
 };
+
+export type BoundingBox = {
+  min: [number, number, number];
+  max: [number, number, number];
+  size: [number, number, number];
+};
+
+export function meshBounds(mesh: MeshArrays): BoundingBox {
+  const { vertProperties: vp, numProp } = mesh;
+  const vertCount = vp.length / numProp;
+  if (vertCount === 0) {
+    return { min: [0, 0, 0], max: [0, 0, 0], size: [0, 0, 0] };
+  }
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  for (let i = 0; i < vertCount; i++) {
+    const x = vp[i * numProp]!;
+    const y = vp[i * numProp + 1]!;
+    const z = vp[i * numProp + 2]!;
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+    if (z < minZ) minZ = z;
+    if (z > maxZ) maxZ = z;
+  }
+  return {
+    min: [minX, minY, minZ],
+    max: [maxX, maxY, maxZ],
+    size: [maxX - minX, maxY - minY, maxZ - minZ],
+  };
+}
+
+export type BedLayoutOptions = {
+  gap?: number;
+  flipFlushCaps?: boolean;
+};
+
+export function layoutPartsForBed(
+  parts: ExportPart[],
+  options?: BedLayoutOptions
+): ExportPart[] {
+  const gap = options?.gap ?? 12;
+  const flipFlush = options?.flipFlushCaps ?? true;
+  const hasFlush = parts.some(p => p.name.toLowerCase().includes('flush'));
+
+  // 1. Process each part: apply rotation if needed
+  const preparedParts = parts.map((part) => {
+    const nameLower = part.name.toLowerCase();
+    const shouldFlip = flipFlush && (
+      nameLower.includes('flush') ||
+      (hasFlush && nameLower.includes('cap'))
+    );
+
+    const { vertProperties: vp, triVerts: tv, numProp } = part.mesh;
+    const count = vp.length / numProp;
+    const newVp = new Float32Array(vp.length);
+
+    for (let i = 0; i < count; i++) {
+      const idx = i * numProp;
+      const x = vp[idx]!;
+      const y = vp[idx + 1]!;
+      const z = vp[idx + 2]!;
+      if (shouldFlip) {
+        newVp[idx] = x;
+        newVp[idx + 1] = -y;
+        newVp[idx + 2] = -z;
+      } else {
+        newVp[idx] = x;
+        newVp[idx + 1] = y;
+        newVp[idx + 2] = z;
+      }
+      for (let p = 3; p < numProp; p++) {
+        newVp[idx + p] = vp[idx + p]!;
+      }
+    }
+
+    return {
+      ...part,
+      mesh: {
+        vertProperties: newVp,
+        triVerts: new Uint32Array(tv),
+        numProp,
+      },
+    };
+  });
+
+  // 2. Measure sizes and calculate total span for centering
+  const boundsList = preparedParts.map(p => meshBounds(p.mesh));
+  const totalSpan = boundsList.reduce((acc, b, i) => {
+    return acc + b.size[0] + (i > 0 ? gap : 0);
+  }, 0);
+
+  let currentX = -totalSpan / 2;
+
+  // 3. Ground to Z=0 and position along X axis
+  return preparedParts.map((part, i) => {
+    const b = boundsList[i]!;
+    const shiftX = currentX - b.min[0];
+    const shiftY = -(b.min[1] + b.max[1]) / 2; // center in Y
+    const shiftZ = -b.min[2]; // ground to Z=0
+
+    const { vertProperties: vp, triVerts: tv, numProp } = part.mesh;
+    const count = vp.length / numProp;
+    const finalVp = new Float32Array(vp.length);
+
+    for (let j = 0; j < count; j++) {
+      const idx = j * numProp;
+      finalVp[idx] = vp[idx]! + shiftX;
+      finalVp[idx + 1] = vp[idx + 1]! + shiftY;
+      finalVp[idx + 2] = vp[idx + 2]! + shiftZ;
+      for (let p = 3; p < numProp; p++) {
+        finalVp[idx + p] = vp[idx + p]!;
+      }
+    }
+
+    currentX += b.size[0] + gap;
+
+    return {
+      ...part,
+      mesh: {
+        vertProperties: finalVp,
+        triVerts: new Uint32Array(tv),
+        numProp,
+      },
+    };
+  });
+}
 
 export function writeBinaryStl(mesh: MeshArrays): ArrayBuffer {
   const { vertProperties: vp, triVerts: tv, numProp } = mesh;
