@@ -14,7 +14,7 @@ export function withBase(path: string): string {
 
 export function mountShell(options: {
   title: string;
-  active: 'hub' | 'keycap' | 'clicker' | 'mascot' | 'features';
+  active: 'hub' | 'keycap' | 'clicker' | 'keychain' | 'mascot' | 'features';
   bodyHtml: string;
 }): HTMLElement {
   const root = document.querySelector<HTMLElement>('#app');
@@ -25,6 +25,7 @@ export function mountShell(options: {
     { id: 'hub', href: withBase(''), label: 'Hub' },
     { id: 'keycap', href: withBase('keycap/'), label: 'Keycap' },
     { id: 'clicker', href: withBase('clicker/'), label: 'Clicker' },
+    { id: 'keychain', href: withBase('keychain/'), label: 'Keychain' },
     { id: 'mascot', href: withBase('mascot/'), label: 'Mascot' },
     { id: 'features', href: withBase('features/'), label: 'ฟีเจอร์' },
   ] as const;

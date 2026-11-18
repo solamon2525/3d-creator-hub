@@ -15,6 +15,7 @@ mountShell({
           <a class="btn primary" href="${withBase('')}">← กลับ Hub</a>
           <a class="btn" href="${withBase('keycap/')}">Keycap</a>
           <a class="btn" href="${withBase('clicker/')}">Clicker</a>
+          <a class="btn" href="${withBase('keychain/')}">Keychain</a>
           <a class="btn" href="${withBase('mascot/')}">Mascot</a>
           <a class="btn" href="${withBase('roadmap.md')}" target="_blank" rel="noopener">ROADMAP.md</a>
         </p>

@@ -18,6 +18,7 @@ export default defineConfig({
         main: resolve(__dirname, 'index.html'),
         keycap: resolve(__dirname, 'keycap/index.html'),
         clicker: resolve(__dirname, 'clicker/index.html'),
+        keychain: resolve(__dirname, 'keychain/index.html'),
         mascot: resolve(__dirname, 'mascot/index.html'),
         features: resolve(__dirname, 'features/index.html'),
       },

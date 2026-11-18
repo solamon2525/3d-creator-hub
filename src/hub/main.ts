@@ -28,6 +28,12 @@ mountShell({
           <p>ชื่อไทย / รูป / SVG · MX socket · พวงกุญแจ · AMS / Z-band</p>
           <span class="pill">text · image · SVG</span>
         </a>
+        <a class="card" href="${withBase('keychain/')}">
+          <div class="emoji">🏷️</div>
+          <h2>Keychain Studio</h2>
+          <p>พวงกุญแจป้ายชื่อ 3D · ขอบตามรูปอักษร (Aksorn3D Parity) · ไอคอนประดับ · 3MF 3 สี</p>
+          <span class="pill">Auto-Contour · 3MF</span>
+        </a>
         <a class="card" href="${withBase('mascot/')}">
           <div class="emoji">🎭</div>
           <h2>Mascot Studio</h2>
